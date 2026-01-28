@@ -12,8 +12,7 @@ function App() {
   const [text, setText] = useState('HELLO');
   const [freq, setFreq] = useState(0);
   const [isListening, setIsListening] = useState(false);
-  const [decodedMsg, setDecodedMsg] = useState(''); // <--- מקום לשמור את ההודעה שתתקבל
-  
+  const [decodedMsg] = useState('');  
   const receiverRef = useRef<Receiver | null>(null);
 
   useEffect(() => {

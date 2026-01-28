@@ -8,7 +8,6 @@ export class Decoder {
   private state: DecoderState = 'IDLE';
   private buffer: string = ''; // אוגר את הביטים שנכנסים
   private messageLength: number = 0;
-  private lastBitTime: number = 0;
   
   // Callback כשמתקבלת הודעה מלאה ותקינה
   public onMessageDecoded: (msg: string) => void = () => {};
