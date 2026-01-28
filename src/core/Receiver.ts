@@ -105,8 +105,8 @@ export class Receiver {
 
     // 2. המרה לביט (עם טווח סובלנות של 300Hz)
     let currentBit: '0' | '1' | null = null;
-    if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 300) currentBit = '0';
-    else if (Math.abs(freq - SonicConfig.FREQ_ONE) < 300) currentBit = '1';
+if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 200) currentBit = '0';
+    else if (Math.abs(freq - SonicConfig.FREQ_ONE) < 200) currentBit = '1';
 
     const now = this.audioContext.currentTime;
 
@@ -141,22 +141,31 @@ export class Receiver {
     this.animationFrameId = requestAnimationFrame(this.loop);
   };
 
-  private findDominantFrequency(dataArray: Uint8Array): number {
+private findDominantFrequency(dataArray: Uint8Array): number {
     if (!this.audioContext) return 0;
+    
+    const nyquist = this.audioContext.sampleRate / 2;
+    // חישוב כמה הרץ מייצג כל "תא" במערך
+    const binSize = nyquist / dataArray.length;
+    
+    // --- התיקון: מתחילים לחפש רק מ-1000Hz ומעלה ---
+    // זה יסנן את ה-47Hz ואת כל הרעשים של המזגן/חשמל
+    const startIndex = Math.floor(800 / binSize); 
+
     let maxValue = 0;
     let maxIndex = -1;
 
-    for (let i = 0; i < dataArray.length; i++) {
+    // הלולאה מתחילה מ-startIndex ולא מ-0
+    for (let i = startIndex; i < dataArray.length; i++) {
       if (dataArray[i] > maxValue) {
         maxValue = dataArray[i];
         maxIndex = i;
       }
     }
 
-    // --- כאן הורדנו את סף הרעש ל-10 ---
+    // סף רעש מינימלי (נשאר רגיש)
     if (maxValue < 10) return 0;
 
-    const nyquist = this.audioContext.sampleRate / 2;
-    return maxIndex * (nyquist / dataArray.length);
+    return maxIndex * binSize;
   }
 }
