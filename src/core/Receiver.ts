@@ -10,10 +10,8 @@ export class Receiver {
   private mediaStream: MediaStream | null = null;
   private animationFrameId: number | null = null;
   
-  // המוח שמפענח את הביטים
   private decoder = new Decoder();
   
-  // משתנים לניהול הזמן (סנכרון שעון)
   private isReceiving = false;
   private nextSampleTime = 0;
   private silenceCounter = 0;
@@ -23,37 +21,30 @@ export class Receiver {
   public onMessageDecoded: (msg: string) => void = () => {};
 
   constructor() {
-    // חיבור ה-Decoder החוצה
     this.decoder.onMessageDecoded = (msg) => {
       this.onMessageDecoded(msg);
-      this.isReceiving = false; // סיימנו הודעה, חוזרים להמתין
+      this.isReceiving = false;
     };
   }
 
-  // הפונקציה מחזירה אמת/שקר כדי שנדע ב-UI אם זה הצליח
   async start(): Promise<boolean> {
     try {
       console.log('[Receiver] Starting...');
       
-      // בדיקה שהדפדפן תומך
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error("Browser does not support audio API");
       }
 
-      // יצירת הקונטקסט
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       
-      // בקשת הרשאה למיקרופון
-      console.log('[Receiver] Requesting mic permission...');
-this.mediaStream = await navigator.mediaDevices.getUserMedia({
-  audio: {
-    echoCancellation: false,      // אל תבטל הד
-    noiseSuppression: false,      // אל תסנן רעשים (קריטי!)
-    autoGainControl: false,       // אל תשנה ווליום לבד
-    channelCount: 1,              // מונו מספיק לנו
-    sampleRate: { ideal: 48000 }  // נסה לקבל איכות גבוהה
-  }
-});      console.log('[Receiver] Permission granted!');
+      // ביטול סינוני רעשים כדי לקלוט את הצליל הגולמי
+      this.mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        }
+      });
       
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
       this.analyser = this.audioContext.createAnalyser();
@@ -64,13 +55,13 @@ this.mediaStream = await navigator.mediaDevices.getUserMedia({
       this.onStatusChange('listening');
       this.loop();
       
-      return true; // הצלחה
+      return true;
       
     } catch (err) {
       console.error('[Receiver] Error:', err);
-      alert('Microphone Access Error: ' + err); // הקפצת שגיאה למסך
+      alert('Microphone Access Error: ' + err); 
       this.onStatusChange('denied');
-      return false; // כישלון
+      return false;
     }
   }
 
@@ -92,21 +83,21 @@ this.mediaStream = await navigator.mediaDevices.getUserMedia({
     const dataArray = new Uint8Array(bufferLength);
     this.analyser.getByteFrequencyData(dataArray);
 
-    // 1. זיהוי התדר
     const freq = this.findDominantFrequency(dataArray);
     this.onFrequencyDetected(freq);
 
-    // 2. המרה לביט
     let currentBit: '0' | '1' | null = null;
-    if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 200) currentBit = '0';
-    else if (Math.abs(freq - SonicConfig.FREQ_ONE) < 200) currentBit = '1';
+    
+    // --- התיקון הגדול: הרחבנו את הטווח ל-400Hz ---
+    // זה יתפוס גם זיופים של הרמקול/מיקרופון
+    if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 400) currentBit = '0';
+    else if (Math.abs(freq - SonicConfig.FREQ_ONE) < 400) currentBit = '1';
 
     const now = this.audioContext.currentTime;
 
-    // 3. מכונת המצבים לסנכרון
     if (!this.isReceiving) {
       if (currentBit !== null) {
-        // התחלת שידור מזוהה
+        // מתחילים סנכרון רק אם זיהינו ביט ברור
         this.isReceiving = true;
         this.nextSampleTime = now + (SonicConfig.BIT_DURATION / 2);
         this.silenceCounter = 0;
@@ -118,8 +109,8 @@ this.mediaStream = await navigator.mediaDevices.getUserMedia({
           this.silenceCounter = 0;
         } else {
           this.silenceCounter++;
-          if (this.silenceCounter > 20) { 
-            // איבוד סיגנל
+          // נותנים לו קצת יותר "חסד" לפני שמתייאשים
+          if (this.silenceCounter > 25) { 
             this.isReceiving = false;
           }
         }
@@ -142,7 +133,8 @@ this.mediaStream = await navigator.mediaDevices.getUserMedia({
       }
     }
 
-    if (maxValue < 50) return 0;
+    // סף רעש מינימלי
+    if (maxValue < 30) return 0;
 
     const nyquist = this.audioContext.sampleRate / 2;
     return maxIndex * (nyquist / dataArray.length);
