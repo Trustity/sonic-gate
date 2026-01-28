@@ -9,36 +9,32 @@ import { FrequencyVisualizer } from './components/FrequencyVisualizer';
 const transmitter = new Transmitter();
 
 function App() {
-  // סטייטים לניהול האפליקציה
   const [text, setText] = useState('HELLO');
-  const [freq, setFreq] = useState(0); // לתצוגת הגרף
-  const [isListening, setIsListening] = useState(false); // האם המיקרופון פתוח
-  const [decodedMsg, setDecodedMsg] = useState(''); // ההודעה שהתקבלה (החזרנו את זה!)
+  const [freq, setFreq] = useState(0);
+  const [isListening, setIsListening] = useState(false);
+  const [decodedMsg, setDecodedMsg] = useState('');
   
-  // Ref לשמירת המקלט בין רינדורים
   const receiverRef = useRef<Receiver | null>(null);
 
   useEffect(() => {
-    // אתחול המקלט בכניסה לאפליקציה
     receiverRef.current = new Receiver();
     
-    // 1. האזנה לשינויי תדר (בשביל הגרף זז)
+    // עדכון תדר לגרף
     receiverRef.current.onFrequencyDetected = (f) => {
       setFreq(f);
     };
 
-    // 2. האזנה לקבלת הודעה מלאה (החלק המעניין!)
+    // קבלת הודעה מפוענחת
     receiverRef.current.onMessageDecoded = (msg) => {
       console.log('Successfully decoded message:', msg);
       setDecodedMsg(msg);
       
-      // פיצ'ר נחמד: אם זה בטלפון, תרעיד אותו כשיש הודעה
+      // רטט בטלפון
       if (navigator.vibrate) {
         navigator.vibrate(200);
       }
     };
 
-    // ניקוי ביציאה
     return () => {
       receiverRef.current?.stop();
     };
@@ -46,26 +42,33 @@ function App() {
 
   const toggleListen = async () => {
     if (isListening) {
+      // כיבוי
       receiverRef.current?.stop();
       setIsListening(false);
     } else {
-      await receiverRef.current?.start();
-      setIsListening(true);
-      // מנקים הודעה קודמת כשמתחילים להקשיב מחדש
-      setDecodedMsg(''); 
+      // הדלקה - ממתינים לראות אם הצליח
+      const success = await receiverRef.current?.start();
+      
+      if (success) {
+        setIsListening(true);
+        setDecodedMsg(''); // ניקוי הודעה קודמת
+      } else {
+        // אם נכשל (למשל המשתמש לא אישר מיקרופון), נשארים כבויים
+        setIsListening(false);
+      }
     }
   };
 
   const handleSend = async () => {
     if (!text) return;
 
-    // 1. המרה לפרוטוקול בינארי עם Checksum ו-Headers
+    // המרה לבינארי
     const encodedPayload = Encoder.encode(text);
     
     console.log(`[App] Sending: "${text}"`);
     console.log(`[App] Binary payload: ${encodedPayload}`);
 
-    // 2. שידור קולי
+    // שידור
     await transmitter.transmit(encodedPayload);
   };
 
@@ -112,10 +115,8 @@ function App() {
             </button>
           </div>
           
-          {/* הרכיב שמציג את הברים זזים */}
           <FrequencyVisualizer currentFreq={freq} />
 
-          {/* האזור שבו מופיעה ההודעה שהתקבלה */}
           {decodedMsg && (
             <div className="mt-6 p-4 bg-green-900/20 border border-green-500/30 rounded-xl text-center animate-pulse">
               <span className="text-[10px] text-green-400 block mb-1 tracking-widest uppercase">Decoded Payload</span>

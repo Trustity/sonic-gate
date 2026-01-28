@@ -1,5 +1,5 @@
 // src/core/Receiver.ts
-import { SonicConfig } from './SonicConfig'; // החזרנו את זה!
+import { SonicConfig } from './SonicConfig';
 import { Decoder } from '../protocol/Decoder';
 
 export type ReceiverStatus = 'listening' | 'stopped' | 'denied';
@@ -20,7 +20,6 @@ export class Receiver {
 
   public onStatusChange: (status: ReceiverStatus) => void = () => {};
   public onFrequencyDetected: (freq: number) => void = () => {};
-  // האירוע החדש שמעניין אותנו
   public onMessageDecoded: (msg: string) => void = () => {};
 
   constructor() {
@@ -31,10 +30,23 @@ export class Receiver {
     };
   }
 
-  async start() {
+  // הפונקציה מחזירה אמת/שקר כדי שנדע ב-UI אם זה הצליח
+  async start(): Promise<boolean> {
     try {
+      console.log('[Receiver] Starting...');
+      
+      // בדיקה שהדפדפן תומך
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Browser does not support audio API");
+      }
+
+      // יצירת הקונטקסט
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      // בקשת הרשאה למיקרופון
+      console.log('[Receiver] Requesting mic permission...');
       this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('[Receiver] Permission granted!');
       
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
       this.analyser = this.audioContext.createAnalyser();
@@ -45,16 +57,24 @@ export class Receiver {
       this.onStatusChange('listening');
       this.loop();
       
+      return true; // הצלחה
+      
     } catch (err) {
-      console.error('Microphone access denied:', err);
+      console.error('[Receiver] Error:', err);
+      alert('Microphone Access Error: ' + err); // הקפצת שגיאה למסך
       this.onStatusChange('denied');
+      return false; // כישלון
     }
   }
 
   stop() {
     if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
     this.mediaStream?.getTracks().forEach(track => track.stop());
-    this.audioContext?.close();
+    
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      this.audioContext.close();
+    }
+    
     this.onStatusChange('stopped');
   }
 
@@ -65,43 +85,37 @@ export class Receiver {
     const dataArray = new Uint8Array(bufferLength);
     this.analyser.getByteFrequencyData(dataArray);
 
-    // 1. זיהוי התדר הנוכחי
+    // 1. זיהוי התדר
     const freq = this.findDominantFrequency(dataArray);
-    this.onFrequencyDetected(freq); // לעדכון הגרף
+    this.onFrequencyDetected(freq);
 
-    // 2. המרה לביט (0, 1 או כלום)
+    // 2. המרה לביט
     let currentBit: '0' | '1' | null = null;
     if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 200) currentBit = '0';
     else if (Math.abs(freq - SonicConfig.FREQ_ONE) < 200) currentBit = '1';
 
     const now = this.audioContext.currentTime;
 
-    // 3. מכונת המצבים של הסנכרון
+    // 3. מכונת המצבים לסנכרון
     if (!this.isReceiving) {
-      // מצב המתנה: מחכים לסיגנל ראשון כדי להתחיל שעון
       if (currentBit !== null) {
-        console.log('[Receiver] Signal detected! Syncing clock...');
+        // התחלת שידור מזוהה
         this.isReceiving = true;
-        // מכוונים את הדגימה הבאה לאמצע הביט כדי להיות מדויקים
         this.nextSampleTime = now + (SonicConfig.BIT_DURATION / 2);
         this.silenceCounter = 0;
       }
     } else {
-      // מצב קליטה: דוגמים בדיוק לפי הקצב שהגדרנו
       if (now >= this.nextSampleTime) {
         if (currentBit !== null) {
           this.decoder.processBit(currentBit);
           this.silenceCounter = 0;
         } else {
-          // אם יש שקט באמצע השידור, סופרים אותו
           this.silenceCounter++;
           if (this.silenceCounter > 20) { 
-            // יותר מדי שקט? כנראה שהשידור נגמר או נקטע
-            console.log('[Receiver] Lost signal, resetting.');
+            // איבוד סיגנל
             this.isReceiving = false;
           }
         }
-        // קפיצה לביט הבא
         this.nextSampleTime += SonicConfig.BIT_DURATION;
       }
     }
@@ -121,7 +135,7 @@ export class Receiver {
       }
     }
 
-    if (maxValue < 50) return 0; // סינון רעש חלש
+    if (maxValue < 50) return 0;
 
     const nyquist = this.audioContext.sampleRate / 2;
     return maxIndex * (nyquist / dataArray.length);
