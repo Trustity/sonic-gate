@@ -28,6 +28,7 @@ export class Receiver {
       this.onLog(`✅ DECODED: ${msg}`);
       this.onMessageDecoded(msg);
       this.isReceiving = false;
+      this.decoder.onLog = (msg) => this.onLog(msg);
     };
     
     // נחבר את הפרוגרס של הדיקודר ללוג שלנו
@@ -114,8 +115,10 @@ export class Receiver {
           this.silenceCounter = 0;
         } else {
           this.silenceCounter++;
-          if (this.silenceCounter > 10) { 
-             // אם היה יותר מדי שקט, נודיע שנכשלנו
+          
+          // --- שינוי מ-10 ל-30 ---
+          // נותן לו יותר זמן "חסד" לפני שהוא מכריז על שגיאה
+          if (this.silenceCounter > 30) { 
              if (this.isReceiving) this.onLog('❌ Signal Lost (Too much silence)');
              this.isReceiving = false;
           }

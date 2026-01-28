@@ -6,42 +6,35 @@ type DecoderState = 'IDLE' | 'SYNC' | 'READ_LENGTH' | 'READ_DATA' | 'CHECK';
 
 export class Decoder {
   private state: DecoderState = 'IDLE';
-  private buffer: string = ''; // אוגר את הביטים שנכנסים
+  private buffer: string = '';
   private messageLength: number = 0;
   
-  // Callback כשמתקבלת הודעה מלאה ותקינה
   public onMessageDecoded: (msg: string) => void = () => {};
-  // Callback לעדכון התקדמות (אופציונלי, ל-UI)
   public onProgress: (percent: number) => void = () => {};
+  // הוספנו יכולת לוגים גם לדיקודר
+  public onLog: (msg: string) => void = () => {};
 
-  constructor() {}
-
-  /**
-   * הפונקציה הזו נקראת בכל פעם שהמקלט מזהה ביט חדש (0 או 1)
-   */
   public processBit(bit: '0' | '1') {
-    // אנחנו מוסיפים את הביט לזרם הנתונים
     this.buffer += bit;
 
-    // ניהול המכונה לפי המצב הנוכחי
     switch (this.state) {
       case 'IDLE':
-        // מחפשים את ה-Start Token (הדגל) בתוך הבאפר האחרון
+        // מחפש את ה-Start Token
         if (this.buffer.endsWith(SonicConfig.START_TOKEN)) {
-          console.log('[Decoder] SYNC DETECTED! Starting reception...');
+          this.onLog('🔹 SYNC FOUND! Reading length...');
           this.state = 'READ_LENGTH';
-          this.buffer = ''; // מנקים את הבאפר כדי לקלוט נקי מעכשיו
+          this.buffer = '';
         }
         break;
 
       case 'READ_LENGTH':
-        // מחכים שיהיו לנו 8 ביטים (בית אחד) שמייצגים את האורך
         if (this.buffer.length === 8) {
           this.messageLength = parseInt(this.buffer, 2);
-          console.log(`[Decoder] Expecting message length: ${this.messageLength} chars`);
+          this.onLog(`🔹 Length detected: ${this.messageLength} chars`);
           
-          if (this.messageLength === 0) {
-            this.reset(); // הודעה ריקה? לא הגיוני, איפוס
+          if (this.messageLength === 0 || this.messageLength > 20) {
+            this.onLog('⚠️ Invalid length, resetting.');
+            this.reset();
           } else {
             this.state = 'READ_DATA';
             this.buffer = '';
@@ -50,28 +43,23 @@ export class Decoder {
         break;
 
       case 'READ_DATA':
-        // כל תו הוא 8 ביטים. אנחנו מחכים שיהיה לנו (אורך * 8) ביטים
         const targetBits = this.messageLength * 8;
-        
-        // עדכון פרוגרס בר ל-UI
         const progress = Math.round((this.buffer.length / targetBits) * 100);
         this.onProgress(progress);
 
         if (this.buffer.length >= targetBits) {
+          this.onLog('🔹 Data read complete. Verifying Checksum...');
           const rawData = this.buffer;
-          // עוברים לבדיקת Checksum
           this.state = 'CHECK'; 
           this.buffer = rawData; // שומרים את המידע בצד
         }
         break;
         
       case 'CHECK':
-         // כרגע נקרא עוד 8 ביטים של ה-Checksum
-         // לצורך הפשטות בשלב ראשון - נדלג על האימות המתמטי ופשוט נציג את ההודעה
-         // בפרודקשן מלא היינו קוראים עוד 8 ביטים ומשווים
-         
+         // כרגע אנחנו לא קוראים את ה-Checksum באמת אלא מיד מציגים
+         // (בשלב הבא נוסיף את הקריאה של ה-8 ביטים הנוספים)
          const message = BinaryUtils.binaryToString(this.buffer);
-         console.log(`[Decoder] DECODED: ${message}`);
+         this.onLog(`✅ SUCCESS: ${message}`);
          this.onMessageDecoded(message);
          this.reset();
          break;
