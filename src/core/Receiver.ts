@@ -1,4 +1,6 @@
 // src/core/Receiver.ts
+import { SonicConfig } from './SonicConfig'; // החזרנו את זה!
+import { Decoder } from '../protocol/Decoder';
 
 export type ReceiverStatus = 'listening' | 'stopped' | 'denied';
 
@@ -8,27 +10,35 @@ export class Receiver {
   private mediaStream: MediaStream | null = null;
   private animationFrameId: number | null = null;
   
-  // Callback כדי שנוכל לעדכן את ה-UI מבחוץ
+  // המוח שמפענח את הביטים
+  private decoder = new Decoder();
+  
+  // משתנים לניהול הזמן (סנכרון שעון)
+  private isReceiving = false;
+  private nextSampleTime = 0;
+  private silenceCounter = 0;
+
   public onStatusChange: (status: ReceiverStatus) => void = () => {};
   public onFrequencyDetected: (freq: number) => void = () => {};
+  // האירוע החדש שמעניין אותנו
+  public onMessageDecoded: (msg: string) => void = () => {};
 
-  constructor() {}
+  constructor() {
+    // חיבור ה-Decoder החוצה
+    this.decoder.onMessageDecoded = (msg) => {
+      this.onMessageDecoded(msg);
+      this.isReceiving = false; // סיימנו הודעה, חוזרים להמתין
+    };
+  }
 
   async start() {
     try {
-      // 1. אתחול ה-Context
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      
-      // 2. בקשת גישה למיקרופון
       this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      // 3. יצירת ה-Source וה-Analyser
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
       this.analyser = this.audioContext.createAnalyser();
-      
-      // הגדרות רזולוציה ל-FFT
-      // 2048 נותן לנו איזון טוב בין דיוק למהירות
-      this.analyser.fftSize = 2048; 
+      this.analyser.fftSize = 2048;
       
       source.connect(this.analyser);
       
@@ -49,39 +59,61 @@ export class Receiver {
   }
 
   private loop = () => {
-    if (!this.analyser) return;
+    if (!this.analyser || !this.audioContext) return;
 
-    // יצירת מערך שיכיל את המידע על התדרים
     const bufferLength = this.analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
-    
-    // מילוי המערך בנתונים מהמיקרופון בזמן אמת
     this.analyser.getByteFrequencyData(dataArray);
 
-    // מציאת התדר הדומיננטי
-    const dominantFreq = this.findDominantFrequency(dataArray);
-    
-    // שליחת התדר ל-UI (כדי שנראה את זה זז)
-    if (dominantFreq > 0) {
-        this.onFrequencyDetected(dominantFreq);
+    // 1. זיהוי התדר הנוכחי
+    const freq = this.findDominantFrequency(dataArray);
+    this.onFrequencyDetected(freq); // לעדכון הגרף
+
+    // 2. המרה לביט (0, 1 או כלום)
+    let currentBit: '0' | '1' | null = null;
+    if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 200) currentBit = '0';
+    else if (Math.abs(freq - SonicConfig.FREQ_ONE) < 200) currentBit = '1';
+
+    const now = this.audioContext.currentTime;
+
+    // 3. מכונת המצבים של הסנכרון
+    if (!this.isReceiving) {
+      // מצב המתנה: מחכים לסיגנל ראשון כדי להתחיל שעון
+      if (currentBit !== null) {
+        console.log('[Receiver] Signal detected! Syncing clock...');
+        this.isReceiving = true;
+        // מכוונים את הדגימה הבאה לאמצע הביט כדי להיות מדויקים
+        this.nextSampleTime = now + (SonicConfig.BIT_DURATION / 2);
+        this.silenceCounter = 0;
+      }
+    } else {
+      // מצב קליטה: דוגמים בדיוק לפי הקצב שהגדרנו
+      if (now >= this.nextSampleTime) {
+        if (currentBit !== null) {
+          this.decoder.processBit(currentBit);
+          this.silenceCounter = 0;
+        } else {
+          // אם יש שקט באמצע השידור, סופרים אותו
+          this.silenceCounter++;
+          if (this.silenceCounter > 20) { 
+            // יותר מדי שקט? כנראה שהשידור נגמר או נקטע
+            console.log('[Receiver] Lost signal, resetting.');
+            this.isReceiving = false;
+          }
+        }
+        // קפיצה לביט הבא
+        this.nextSampleTime += SonicConfig.BIT_DURATION;
+      }
     }
 
-    // הרצה חוזרת בפריים הבא
     this.animationFrameId = requestAnimationFrame(this.loop);
   };
 
-  /**
-   * ממיר את המידע מה-FFT לתדר ספציפי ב-Hz
-   */
   private findDominantFrequency(dataArray: Uint8Array): number {
     if (!this.audioContext) return 0;
-
     let maxValue = 0;
     let maxIndex = -1;
 
-    // חיפוש ה"פיק" הכי גבוה במערך
-    // אנחנו סורקים רק את החלק העליון של הספקטרום כדי לחסוך ביצועים
-    // (כי אנחנו יודעים שהתדרים שלנו גבוהים)
     for (let i = 0; i < dataArray.length; i++) {
       if (dataArray[i] > maxValue) {
         maxValue = dataArray[i];
@@ -89,14 +121,9 @@ export class Receiver {
       }
     }
 
-    // סינון רעש: אם ה"פיק" חלש מדי, מתעלמים
-    if (maxValue < 50) return 0; 
+    if (maxValue < 50) return 0; // סינון רעש חלש
 
-    // המרה מאינדקס במערך לתדר ב-Hz
-    // הנוסחה: Index * SampleRate / FFT_Size
     const nyquist = this.audioContext.sampleRate / 2;
-    const frequency = maxIndex * (nyquist / dataArray.length);
-
-    return frequency;
+    return maxIndex * (nyquist / dataArray.length);
   }
 }

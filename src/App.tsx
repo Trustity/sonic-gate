@@ -2,28 +2,43 @@
 import { useState, useEffect, useRef } from 'react';
 import { Transmitter } from './core/Transmitter';
 import { Receiver } from './core/Receiver';
-import { Encoder } from './protocol/Encoder'; // <--- הייבוא החדש
+import { Encoder } from './protocol/Encoder';
 import { FrequencyVisualizer } from './components/FrequencyVisualizer';
 
-// יוצרים את המשדר מחוץ לקומפוננטה כדי שלא ייווצר מחדש בכל רינדור
+// יוצרים את המשדר מחוץ לקומפוננטה
 const transmitter = new Transmitter();
 
 function App() {
+  // סטייטים לניהול האפליקציה
   const [text, setText] = useState('HELLO');
-  const [freq, setFreq] = useState(0);
-  const [isListening, setIsListening] = useState(false);
-  const [decodedMsg] = useState('');  
+  const [freq, setFreq] = useState(0); // לתצוגת הגרף
+  const [isListening, setIsListening] = useState(false); // האם המיקרופון פתוח
+  const [decodedMsg, setDecodedMsg] = useState(''); // ההודעה שהתקבלה (החזרנו את זה!)
+  
+  // Ref לשמירת המקלט בין רינדורים
   const receiverRef = useRef<Receiver | null>(null);
 
   useEffect(() => {
-    // אתחול המקלט
+    // אתחול המקלט בכניסה לאפליקציה
     receiverRef.current = new Receiver();
     
-    // הרשמה לעדכונים מהמקלט (תדרים)
+    // 1. האזנה לשינויי תדר (בשביל הגרף זז)
     receiverRef.current.onFrequencyDetected = (f) => {
       setFreq(f);
     };
 
+    // 2. האזנה לקבלת הודעה מלאה (החלק המעניין!)
+    receiverRef.current.onMessageDecoded = (msg) => {
+      console.log('Successfully decoded message:', msg);
+      setDecodedMsg(msg);
+      
+      // פיצ'ר נחמד: אם זה בטלפון, תרעיד אותו כשיש הודעה
+      if (navigator.vibrate) {
+        navigator.vibrate(200);
+      }
+    };
+
+    // ניקוי ביציאה
     return () => {
       receiverRef.current?.stop();
     };
@@ -36,20 +51,21 @@ function App() {
     } else {
       await receiverRef.current?.start();
       setIsListening(true);
+      // מנקים הודעה קודמת כשמתחילים להקשיב מחדש
+      setDecodedMsg(''); 
     }
   };
 
   const handleSend = async () => {
     if (!text) return;
 
-    // 1. המרה לפרוטוקול שלנו (בינארי + כותרות)
+    // 1. המרה לפרוטוקול בינארי עם Checksum ו-Headers
     const encodedPayload = Encoder.encode(text);
     
-    // לוג כדי שתוכל לראות את ה"קסם" בקונסול
-    console.log(`[App] Original: "${text}"`);
-    console.log(`[App] Encoded:  "${encodedPayload}"`);
+    console.log(`[App] Sending: "${text}"`);
+    console.log(`[App] Binary payload: ${encodedPayload}`);
 
-    // 2. שידור
+    // 2. שידור קולי
     await transmitter.transmit(encodedPayload);
   };
 
@@ -77,8 +93,8 @@ function App() {
               SEND
             </button>
           </div>
-          <div className="mt-2 text-[10px] text-gray-600 font-mono overflow-hidden text-ellipsis whitespace-nowrap">
-            Check console (F12) to see binary output
+          <div className="mt-2 text-[10px] text-gray-600 font-mono">
+            Transmits via ultrasonic audio (18.5kHz - 19.5kHz)
           </div>
         </div>
 
@@ -96,17 +112,23 @@ function App() {
             </button>
           </div>
           
-          {/* ויזואליזציה של התדרים */}
+          {/* הרכיב שמציג את הברים זזים */}
           <FrequencyVisualizer currentFreq={freq} />
 
-          {/* מקום להודעה המפורשת (כרגע ריק עד שנחבר את ה-Decoder) */}
+          {/* האזור שבו מופיעה ההודעה שהתקבלה */}
           {decodedMsg && (
-            <div className="mt-4 p-4 bg-green-900/20 border border-green-500/30 rounded-lg text-center">
-              <span className="text-xs text-green-400 block mb-1">DECODED MESSAGE</span>
-              <span className="text-xl font-mono font-bold text-white tracking-widest">{decodedMsg}</span>
+            <div className="mt-6 p-4 bg-green-900/20 border border-green-500/30 rounded-xl text-center animate-pulse">
+              <span className="text-[10px] text-green-400 block mb-1 tracking-widest uppercase">Decoded Payload</span>
+              <span className="text-2xl font-mono font-bold text-white break-all drop-shadow-[0_0_10px_rgba(34,197,94,0.8)]">
+                {decodedMsg}
+              </span>
             </div>
           )}
         </div>
+      </div>
+      
+      <div className="mt-8 text-gray-600 text-xs font-mono">
+        Status: {isListening ? 'LISTENING...' : 'IDLE'}
       </div>
     </div>
   );
