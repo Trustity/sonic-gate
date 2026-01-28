@@ -1,11 +1,12 @@
 // src/core/SonicConfig.ts
 
 export const SonicConfig = {
-  // הורדנו לתדרים שמיעים (כמו R2D2)
-  FREQ_ZERO: 2000, 
-  FREQ_ONE: 2500,  
+  // חזרנו לתחום העל-קולי (שקט)
+  FREQ_ZERO: 18500, 
+  FREQ_ONE: 19500,
   
-  BAUD_RATE: 10, // האטנו קצת את הקצב
+  // קצב שידור מהיר יותר (עכשיו שהווליום תוקן)
+  BAUD_RATE: 20,
   
   get BIT_DURATION() {
     return 1 / this.BAUD_RATE;
