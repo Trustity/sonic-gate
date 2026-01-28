@@ -10,28 +10,32 @@ export class Receiver {
   private mediaStream: MediaStream | null = null;
   private animationFrameId: number | null = null;
   
+  // המוח שמפענח את הביטים
   private decoder = new Decoder();
   
+  // משתנים לניהול הזמן (סנכרון שעון)
   private isReceiving = false;
   private nextSampleTime = 0;
   private silenceCounter = 0;
 
+  // Callbacks לעדכון ה-UI
   public onStatusChange: (status: ReceiverStatus) => void = () => {};
   public onFrequencyDetected: (freq: number) => void = () => {};
   public onMessageDecoded: (msg: string) => void = () => {};
-  
-  // --- התוספת החדשה: לוג למסך ---
   public onLog: (log: string) => void = () => {};
 
   constructor() {
+    // 1. חיבור הודעות הצלחה
     this.decoder.onMessageDecoded = (msg) => {
       this.onLog(`✅ DECODED: ${msg}`);
       this.onMessageDecoded(msg);
-      this.isReceiving = false;
-      this.decoder.onLog = (msg) => this.onLog(msg);
+      this.isReceiving = false; // סיימנו הודעה, חוזרים להמתין
     };
     
-    // נחבר את הפרוגרס של הדיקודר ללוג שלנו
+    // 2. חיבור לוגים מהדיקודר (כדי לראות SYNC ו-LENGTH)
+    this.decoder.onLog = (msg) => this.onLog(msg);
+
+    // 3. עדכון התקדמות (אופציונלי, כדי לא להפציץ את הלוג)
     this.decoder.onProgress = (percent) => {
       if (percent % 20 === 0) this.onLog(`Reading... ${percent}%`);
     }
@@ -41,12 +45,15 @@ export class Receiver {
     try {
       this.onLog('Starting microphone...');
       
+      // בדיקה שהדפדפן תומך
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error("Browser does not support audio API");
       }
 
+      // יצירת הקונטקסט
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       
+      // בקשת הרשאה עם ביטול סינוני רעשים (קריטי!)
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
@@ -65,21 +72,23 @@ export class Receiver {
       this.onLog('Mic active. Waiting for signal...');
       this.loop();
       
-      return true;
+      return true; // הצלחה
       
     } catch (err) {
       this.onLog(`Error: ${err}`);
       this.onStatusChange('denied');
-      return false;
+      return false; // כישלון
     }
   }
 
   stop() {
     if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
     this.mediaStream?.getTracks().forEach(track => track.stop());
+    
     if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close();
     }
+    
     this.onStatusChange('stopped');
   }
 
@@ -90,35 +99,37 @@ export class Receiver {
     const dataArray = new Uint8Array(bufferLength);
     this.analyser.getByteFrequencyData(dataArray);
 
+    // 1. זיהוי התדר
     const freq = this.findDominantFrequency(dataArray);
     this.onFrequencyDetected(freq);
 
+    // 2. המרה לביט (עם טווח סובלנות של 300Hz)
     let currentBit: '0' | '1' | null = null;
-    
-    // טווח של 300 הרץ לכל כיוון (בלי חפיפה!)
     if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 300) currentBit = '0';
     else if (Math.abs(freq - SonicConfig.FREQ_ONE) < 300) currentBit = '1';
 
     const now = this.audioContext.currentTime;
 
+    // 3. מכונת המצבים
     if (!this.isReceiving) {
+      // מצב המתנה
       if (currentBit !== null) {
         this.isReceiving = true;
         this.onLog(`📶 Signal Detected! (${Math.round(freq)}Hz)`);
+        // מכוונים לאמצע הביט
         this.nextSampleTime = now + (SonicConfig.BIT_DURATION / 2);
         this.silenceCounter = 0;
       }
     } else {
+      // מצב קליטה
       if (now >= this.nextSampleTime) {
         if (currentBit !== null) {
           this.decoder.processBit(currentBit);
           this.silenceCounter = 0;
         } else {
           this.silenceCounter++;
-          
-          // --- שינוי מ-10 ל-30 ---
-          // נותן לו יותר זמן "חסד" לפני שהוא מכריז על שגיאה
-          if (this.silenceCounter > 30) { 
+          // --- כאן הגדלנו את הסבלנות ל-60 ---
+          if (this.silenceCounter > 60) { 
              if (this.isReceiving) this.onLog('❌ Signal Lost (Too much silence)');
              this.isReceiving = false;
           }
@@ -134,13 +145,17 @@ export class Receiver {
     if (!this.audioContext) return 0;
     let maxValue = 0;
     let maxIndex = -1;
+
     for (let i = 0; i < dataArray.length; i++) {
       if (dataArray[i] > maxValue) {
         maxValue = dataArray[i];
         maxIndex = i;
       }
     }
-    if (maxValue < 30) return 0;
+
+    // --- כאן הורדנו את סף הרעש ל-10 ---
+    if (maxValue < 10) return 0;
+
     const nyquist = this.audioContext.sampleRate / 2;
     return maxIndex * (nyquist / dataArray.length);
   }

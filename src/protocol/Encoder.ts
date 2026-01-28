@@ -14,12 +14,13 @@ export class Encoder {
     const checksumBinary = checksum.toString(2).padStart(8, '0');
 
     return (
-      '00000000' +              // Wake-up (התחלה)
-      SonicConfig.START_TOKEN + 
+      // --- השינוי: פתיח "נדנדה" במקום שקט ---
+      '1010101010101010' +      // Wake-up חזק (16 ביטים)
+      SonicConfig.START_TOKEN + // Preamble
       lengthBinary +            
       dataBinary +              
       checksumBinary +          
-      '0000000000'              // --- השינוי: זנב ארוך יותר (10 אפסים) ---
+      '000000000000'            // זנב ארוך לסיום בטוח
     );
   }
 }

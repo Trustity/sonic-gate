@@ -59,11 +59,9 @@ export class Transmitter {
   private scheduleFrequencies(sequence: string, startTime: number) {
     if (!this.oscillator || !this.gainNode) return;
 
-    // --- התיקון הגדול: שינוי הווליום ל-0.1 ---
-    
-    // התחלה: עולים מאפס ל-0.1 (במקום ל-1)
+    // --- שינוי ווליום ל-0.3 ---
     this.gainNode.gain.setValueAtTime(0, startTime);
-    this.gainNode.gain.linearRampToValueAtTime(0.1, startTime + 0.01);
+    this.gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.05); // עליה קצת יותר איטית למניעת "קליק"
 
     for (let i = 0; i < sequence.length; i++) {
       const bit = sequence[i];
@@ -73,9 +71,8 @@ export class Transmitter {
       this.oscillator.frequency.setValueAtTime(frequency, time);
     }
     
-    // סיום: יורדים מ-0.1 לאפס
     const endTime = startTime + (sequence.length * SonicConfig.BIT_DURATION);
-    this.gainNode.gain.setValueAtTime(0.1, endTime - 0.01);
+    this.gainNode.gain.setValueAtTime(0.3, endTime - 0.05);
     this.gainNode.gain.linearRampToValueAtTime(0, endTime);
   }
 
