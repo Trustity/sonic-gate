@@ -45,8 +45,15 @@ export class Receiver {
       
       // בקשת הרשאה למיקרופון
       console.log('[Receiver] Requesting mic permission...');
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log('[Receiver] Permission granted!');
+this.mediaStream = await navigator.mediaDevices.getUserMedia({
+  audio: {
+    echoCancellation: false,      // אל תבטל הד
+    noiseSuppression: false,      // אל תסנן רעשים (קריטי!)
+    autoGainControl: false,       // אל תשנה ווליום לבד
+    channelCount: 1,              // מונו מספיק לנו
+    sampleRate: { ideal: 48000 }  // נסה לקבל איכות גבוהה
+  }
+});      console.log('[Receiver] Permission granted!');
       
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
       this.analyser = this.audioContext.createAnalyser();
