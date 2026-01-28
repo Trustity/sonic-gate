@@ -11,7 +11,6 @@ export class Decoder {
   
   public onMessageDecoded: (msg: string) => void = () => {};
   public onProgress: (percent: number) => void = () => {};
-  // הוספנו יכולת לוגים גם לדיקודר
   public onLog: (msg: string) => void = () => {};
 
   public processBit(bit: '0' | '1') {
@@ -19,9 +18,9 @@ export class Decoder {
 
     switch (this.state) {
       case 'IDLE':
-        // מחפש את ה-Start Token
+        // מחפשים את הדגל
         if (this.buffer.endsWith(SonicConfig.START_TOKEN)) {
-          this.onLog('🔹 SYNC FOUND! Reading length...');
+          this.onLog('🔹 SYNC OK! Reading header...');
           this.state = 'READ_LENGTH';
           this.buffer = '';
         }
@@ -30,10 +29,11 @@ export class Decoder {
       case 'READ_LENGTH':
         if (this.buffer.length === 8) {
           this.messageLength = parseInt(this.buffer, 2);
-          this.onLog(`🔹 Length detected: ${this.messageLength} chars`);
+          this.onLog(`🔹 Expecting: ${this.messageLength} chars`);
           
-          if (this.messageLength === 0 || this.messageLength > 20) {
-            this.onLog('⚠️ Invalid length, resetting.');
+          // הגנה מפני אורך לא הגיוני (זבל)
+          if (this.messageLength === 0 || this.messageLength > 50) {
+            this.onLog(`⚠️ Weird length (${this.messageLength}), resetting.`);
             this.reset();
           } else {
             this.state = 'READ_DATA';
@@ -48,21 +48,24 @@ export class Decoder {
         this.onProgress(progress);
 
         if (this.buffer.length >= targetBits) {
-          this.onLog('🔹 Data read complete. Verifying Checksum...');
-          const rawData = this.buffer;
-          this.state = 'CHECK'; 
-          this.buffer = rawData; // שומרים את המידע בצד
+          this.onLog('🔹 Payload received. Decoding...');
+          
+          // --- שינוי: מנסים לפענח מיד, לפני ה-Checksum ---
+          try {
+            const rawMessage = BinaryUtils.binaryToString(this.buffer);
+            this.onLog(`💡 Raw Content: "${rawMessage}"`);
+            
+            // אנחנו מוותרים על בדיקת ה-Checksum הקשוחה כרגע
+            // ומציגים את ההודעה בכל מקרה
+            this.onMessageDecoded(rawMessage);
+            this.reset();
+            
+          } catch (e) {
+            this.onLog('❌ Binary Error');
+            this.reset();
+          }
         }
         break;
-        
-      case 'CHECK':
-         // כרגע אנחנו לא קוראים את ה-Checksum באמת אלא מיד מציגים
-         // (בשלב הבא נוסיף את הקריאה של ה-8 ביטים הנוספים)
-         const message = BinaryUtils.binaryToString(this.buffer);
-         this.onLog(`✅ SUCCESS: ${message}`);
-         this.onMessageDecoded(message);
-         this.reset();
-         break;
     }
   }
 

@@ -105,9 +105,8 @@ export class Receiver {
 
     // 2. המרה לביט (עם טווח סובלנות של 300Hz)
     let currentBit: '0' | '1' | null = null;
-if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 200) currentBit = '0';
-    else if (Math.abs(freq - SonicConfig.FREQ_ONE) < 200) currentBit = '1';
-
+if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 400) currentBit = '0';
+    else if (Math.abs(freq - SonicConfig.FREQ_ONE) < 400) currentBit = '1';
     const now = this.audioContext.currentTime;
 
     // 3. מכונת המצבים

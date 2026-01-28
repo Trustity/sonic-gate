@@ -1,10 +1,11 @@
 // src/core/SonicConfig.ts
 
 export const SonicConfig = {
-  // תדרים חדשים, חזקים וברורים (כמו צליל חיוג)
-  FREQ_ZERO: 1200, 
-  FREQ_ONE:  1800, 
+  // הפרדה קיצונית - אי אפשר לפספס
+  FREQ_ZERO: 1500, 
+  FREQ_ONE:  3500, 
   
+  // קצב איטי
   BAUD_RATE: 5, 
   
   get BIT_DURATION() {
