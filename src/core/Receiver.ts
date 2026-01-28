@@ -19,17 +19,26 @@ export class Receiver {
   public onStatusChange: (status: ReceiverStatus) => void = () => {};
   public onFrequencyDetected: (freq: number) => void = () => {};
   public onMessageDecoded: (msg: string) => void = () => {};
+  
+  // --- התוספת החדשה: לוג למסך ---
+  public onLog: (log: string) => void = () => {};
 
   constructor() {
     this.decoder.onMessageDecoded = (msg) => {
+      this.onLog(`✅ DECODED: ${msg}`);
       this.onMessageDecoded(msg);
       this.isReceiving = false;
     };
+    
+    // נחבר את הפרוגרס של הדיקודר ללוג שלנו
+    this.decoder.onProgress = (percent) => {
+      if (percent % 20 === 0) this.onLog(`Reading... ${percent}%`);
+    }
   }
 
   async start(): Promise<boolean> {
     try {
-      console.log('[Receiver] Starting...');
+      this.onLog('Starting microphone...');
       
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error("Browser does not support audio API");
@@ -37,7 +46,6 @@ export class Receiver {
 
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       
-      // ביטול סינוני רעשים כדי לקלוט את הצליל הגולמי
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
@@ -53,13 +61,13 @@ export class Receiver {
       source.connect(this.analyser);
       
       this.onStatusChange('listening');
+      this.onLog('Mic active. Waiting for signal...');
       this.loop();
       
       return true;
       
     } catch (err) {
-      console.error('[Receiver] Error:', err);
-      alert('Microphone Access Error: ' + err); 
+      this.onLog(`Error: ${err}`);
       this.onStatusChange('denied');
       return false;
     }
@@ -68,11 +76,9 @@ export class Receiver {
   stop() {
     if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
     this.mediaStream?.getTracks().forEach(track => track.stop());
-    
     if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close();
     }
-    
     this.onStatusChange('stopped');
   }
 
@@ -88,17 +94,16 @@ export class Receiver {
 
     let currentBit: '0' | '1' | null = null;
     
-    // --- התיקון הגדול: הרחבנו את הטווח ל-400Hz ---
-    // זה יתפוס גם זיופים של הרמקול/מיקרופון
-    if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 400) currentBit = '0';
-    else if (Math.abs(freq - SonicConfig.FREQ_ONE) < 400) currentBit = '1';
+    // טווח של 300 הרץ לכל כיוון (בלי חפיפה!)
+    if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 300) currentBit = '0';
+    else if (Math.abs(freq - SonicConfig.FREQ_ONE) < 300) currentBit = '1';
 
     const now = this.audioContext.currentTime;
 
     if (!this.isReceiving) {
       if (currentBit !== null) {
-        // מתחילים סנכרון רק אם זיהינו ביט ברור
         this.isReceiving = true;
+        this.onLog(`📶 Signal Detected! (${Math.round(freq)}Hz)`);
         this.nextSampleTime = now + (SonicConfig.BIT_DURATION / 2);
         this.silenceCounter = 0;
       }
@@ -109,9 +114,10 @@ export class Receiver {
           this.silenceCounter = 0;
         } else {
           this.silenceCounter++;
-          // נותנים לו קצת יותר "חסד" לפני שמתייאשים
-          if (this.silenceCounter > 25) { 
-            this.isReceiving = false;
+          if (this.silenceCounter > 10) { 
+             // אם היה יותר מדי שקט, נודיע שנכשלנו
+             if (this.isReceiving) this.onLog('❌ Signal Lost (Too much silence)');
+             this.isReceiving = false;
           }
         }
         this.nextSampleTime += SonicConfig.BIT_DURATION;
@@ -125,17 +131,13 @@ export class Receiver {
     if (!this.audioContext) return 0;
     let maxValue = 0;
     let maxIndex = -1;
-
     for (let i = 0; i < dataArray.length; i++) {
       if (dataArray[i] > maxValue) {
         maxValue = dataArray[i];
         maxIndex = i;
       }
     }
-
-    // סף רעש מינימלי
     if (maxValue < 30) return 0;
-
     const nyquist = this.audioContext.sampleRate / 2;
     return maxIndex * (nyquist / dataArray.length);
   }

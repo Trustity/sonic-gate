@@ -5,7 +5,6 @@ import { Receiver } from './core/Receiver';
 import { Encoder } from './protocol/Encoder';
 import { FrequencyVisualizer } from './components/FrequencyVisualizer';
 
-// יוצרים את המשדר מחוץ לקומפוננטה
 const transmitter = new Transmitter();
 
 function App() {
@@ -14,25 +13,29 @@ function App() {
   const [isListening, setIsListening] = useState(false);
   const [decodedMsg, setDecodedMsg] = useState('');
   
+  // --- סטייט ללוגים ---
+  const [logs, setLogs] = useState<string[]>([]);
+  
   const receiverRef = useRef<Receiver | null>(null);
+
+  // פונקציית עזר להוספת לוג (שומרת רק את ה-5 האחרונים)
+  const addLog = (msg: string) => {
+    setLogs(prev => [msg, ...prev].slice(0, 5));
+  };
 
   useEffect(() => {
     receiverRef.current = new Receiver();
     
-    // עדכון תדר לגרף
-    receiverRef.current.onFrequencyDetected = (f) => {
-      setFreq(f);
+    receiverRef.current.onFrequencyDetected = (f) => setFreq(f);
+    
+    receiverRef.current.onMessageDecoded = (msg) => {
+      setDecodedMsg(msg);
+      if (navigator.vibrate) navigator.vibrate(200);
     };
 
-    // קבלת הודעה מפוענחת
-    receiverRef.current.onMessageDecoded = (msg) => {
-      console.log('Successfully decoded message:', msg);
-      setDecodedMsg(msg);
-      
-      // רטט בטלפון
-      if (navigator.vibrate) {
-        navigator.vibrate(200);
-      }
+    // --- חיבור הלוג למסך ---
+    receiverRef.current.onLog = (msg) => {
+      addLog(msg);
     };
 
     return () => {
@@ -42,18 +45,15 @@ function App() {
 
   const toggleListen = async () => {
     if (isListening) {
-      // כיבוי
       receiverRef.current?.stop();
       setIsListening(false);
     } else {
-      // הדלקה - ממתינים לראות אם הצליח
+      addLog('Requesting mic...');
       const success = await receiverRef.current?.start();
-      
       if (success) {
         setIsListening(true);
-        setDecodedMsg(''); // ניקוי הודעה קודמת
+        setDecodedMsg(''); 
       } else {
-        // אם נכשל (למשל המשתמש לא אישר מיקרופון), נשארים כבויים
         setIsListening(false);
       }
     }
@@ -61,14 +61,8 @@ function App() {
 
   const handleSend = async () => {
     if (!text) return;
-
-    // המרה לבינארי
     const encodedPayload = Encoder.encode(text);
-    
-    console.log(`[App] Sending: "${text}"`);
-    console.log(`[App] Binary payload: ${encodedPayload}`);
-
-    // שידור
+    console.log(`Sending: ${encodedPayload}`);
     await transmitter.transmit(encodedPayload);
   };
 
@@ -79,29 +73,25 @@ function App() {
       </h1>
 
       <div className="grid gap-8 w-full max-w-lg">
-        {/* --- אזור השידור --- */}
+        {/* TRANSMITTER */}
         <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 shadow-2xl">
           <label className="text-xs font-bold text-gray-500 mb-2 block tracking-widest">TRANSMITTER</label>
           <div className="flex gap-2">
             <input 
               value={text} 
               onChange={e => setText(e.target.value)}
-              className="bg-gray-800 text-white px-4 py-3 rounded-lg flex-1 focus:outline-none focus:ring-2 focus:ring-green-500 font-mono"
-              placeholder="Enter secret..."
+              className="bg-gray-800 text-white px-4 py-3 rounded-lg flex-1 font-mono"
             />
             <button 
               onClick={handleSend}
-              className="bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-lg font-bold transition-all active:scale-95"
+              className="bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-lg font-bold"
             >
               SEND
             </button>
           </div>
-          <div className="mt-2 text-[10px] text-gray-600 font-mono">
-            Transmits via ultrasonic audio (18.5kHz - 19.5kHz)
-          </div>
         </div>
 
-        {/* --- אזור הקליטה --- */}
+        {/* RECEIVER */}
         <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 shadow-2xl relative overflow-hidden">
           <div className="flex justify-between items-center mb-4">
             <label className="text-xs font-bold text-gray-500 tracking-widest">RECEIVER</label>
@@ -117,19 +107,23 @@ function App() {
           
           <FrequencyVisualizer currentFreq={freq} />
 
+          {/* --- תיבת לוגים (DEBUG LOG) --- */}
+          <div className="mt-4 bg-black/40 p-3 rounded text-[10px] font-mono text-gray-400 h-24 overflow-y-auto border border-gray-800">
+            {logs.length === 0 && <div className="text-gray-600 italic">Logs will appear here...</div>}
+            {logs.map((log, i) => (
+              <div key={i} className="border-b border-gray-800/50 pb-1 mb-1 last:border-0">
+                {log}
+              </div>
+            ))}
+          </div>
+
           {decodedMsg && (
-            <div className="mt-6 p-4 bg-green-900/20 border border-green-500/30 rounded-xl text-center animate-pulse">
-              <span className="text-[10px] text-green-400 block mb-1 tracking-widest uppercase">Decoded Payload</span>
-              <span className="text-2xl font-mono font-bold text-white break-all drop-shadow-[0_0_10px_rgba(34,197,94,0.8)]">
-                {decodedMsg}
-              </span>
+            <div className="mt-4 p-4 bg-green-900/20 border border-green-500/30 rounded-xl text-center animate-pulse">
+              <span className="text-[10px] text-green-400 block mb-1">DECODED</span>
+              <span className="text-2xl font-mono font-bold text-white">{decodedMsg}</span>
             </div>
           )}
         </div>
-      </div>
-      
-      <div className="mt-8 text-gray-600 text-xs font-mono">
-        Status: {isListening ? 'LISTENING...' : 'IDLE'}
       </div>
     </div>
   );
