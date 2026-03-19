@@ -18,14 +18,20 @@ export class Decoder {
     this.buffer += bit;
 
     switch (this.state) {
-      case 'IDLE':
+      case 'IDLE': {
         if (this.buffer.length > 32) this.buffer = this.buffer.slice(-24);
-        if (this.buffer.endsWith(SonicConfig.SYNC_TOKEN)) {
-          this.onLog('🔹 SYNC OK! Reading header...');
-          this.state = 'READ_LENGTH';
-          this.buffer = '';
+        const sync = SonicConfig.SYNC_TOKEN;
+        if (this.buffer.length >= sync.length) {
+          const tail = this.buffer.slice(-sync.length);
+          const errors = tail.split('').filter((c, i) => c !== sync[i]).length;
+          if (errors <= 2) {
+            this.onLog(`🔹 SYNC OK! (${errors} err) Reading header...`);
+            this.state = 'READ_LENGTH';
+            this.buffer = '';
+          }
         }
         break;
+      }
 
       case 'READ_LENGTH':
         if (this.buffer.length === 8) {

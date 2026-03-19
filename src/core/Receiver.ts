@@ -17,6 +17,8 @@ export class Receiver {
   private isReceiving = false;
   private nextSampleTime = 0;
   private silenceCounter = 0;
+  // Majority voting: אוספים דגימות לכל ביט
+  private bitSamples: ('0' | '1')[] = [];
 
   // Callbacks לעדכון ה-UI
   public onStatusChange: (status: ReceiverStatus) => void = () => {};
@@ -62,7 +64,8 @@ export class Receiver {
       
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
       this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 2048;
+      this.analyser.fftSize = 4096;
+      this.analyser.smoothingTimeConstant = 0.5;
       
       source.connect(this.analyser);
       
@@ -109,28 +112,31 @@ if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 400) currentBit = '0';
 
     // 3. מכונת המצבים
     if (!this.isReceiving) {
-      // מצב המתנה
       if (currentBit !== null) {
         this.isReceiving = true;
+        this.bitSamples = [];
         this.onLog(`📶 Signal Detected! (${Math.round(freq)}Hz)`);
-        // מכוונים לאמצע הביט
-        this.nextSampleTime = now + (SonicConfig.BIT_DURATION / 2);
+        this.nextSampleTime = now + SonicConfig.BIT_DURATION * 0.6; // דילוג על תחילת הביט הראשון
         this.silenceCounter = 0;
       }
     } else {
-      // מצב קליטה
-      if (now >= this.nextSampleTime) {
-        if (currentBit !== null) {
-          this.decoder.processBit(currentBit);
-          this.silenceCounter = 0;
-        } else {
-          this.silenceCounter++;
-          // --- כאן הגדלנו את הסבלנות ל-60 ---
-          if (this.silenceCounter > 60) { 
-             if (this.isReceiving) this.onLog('❌ Signal Lost (Too much silence)');
-             this.isReceiving = false;
-          }
+      if (currentBit !== null) {
+        this.bitSamples.push(currentBit);
+        this.silenceCounter = 0;
+      } else {
+        this.silenceCounter++;
+        if (this.silenceCounter > 90) {
+          this.onLog('❌ Signal Lost');
+          this.isReceiving = false;
+          this.bitSamples = [];
         }
+      }
+      if (now >= this.nextSampleTime) {
+        const resolved = this.resolveBit();
+        if (resolved !== null) {
+          this.decoder.processBit(resolved);
+        }
+        this.bitSamples = [];
         this.nextSampleTime += SonicConfig.BIT_DURATION;
       }
     }
@@ -138,7 +144,14 @@ if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 400) currentBit = '0';
     this.animationFrameId = requestAnimationFrame(this.loop);
   };
 
-private findDominantFrequency(dataArray: Uint8Array): number {
+  private resolveBit(): '0' | '1' | null {
+    if (this.bitSamples.length === 0) return null;
+    const zeros = this.bitSamples.filter((b) => b === '0').length;
+    const ones = this.bitSamples.length - zeros;
+    return zeros >= ones ? '0' : '1';
+  }
+
+  private findDominantFrequency(dataArray: Uint8Array): number {
     if (!this.audioContext) return 0;
     
     const nyquist = this.audioContext.sampleRate / 2;

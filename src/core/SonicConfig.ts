@@ -5,8 +5,8 @@ export const SonicConfig = {
   FREQ_ZERO: 1500, 
   FREQ_ONE:  3500, 
   
-  // קצב איטי
-  BAUD_RATE: 5, 
+  // קצב איטי ליציבות (3 = 333ms לביט)
+  BAUD_RATE: 3, 
   
   get BIT_DURATION() {
     return 1 / this.BAUD_RATE;
