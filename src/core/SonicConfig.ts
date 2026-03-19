@@ -12,5 +12,7 @@ export const SonicConfig = {
     return 1 / this.BAUD_RATE;
   },
 
-  START_TOKEN: '10101010', 
+  START_TOKEN: '10101010',
+  /** Full 16-bit sync - avoids false sync on wake-up pattern */
+  SYNC_TOKEN: '1010101010101010',
 };

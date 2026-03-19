@@ -8,6 +8,7 @@ export class Decoder {
   private state: DecoderState = 'IDLE';
   private buffer: string = '';
   private messageLength: number = 0;
+  private pendingDataBinary: string = '';
   
   public onMessageDecoded: (msg: string) => void = () => {};
   public onProgress: (percent: number) => void = () => {};
@@ -18,8 +19,8 @@ export class Decoder {
 
     switch (this.state) {
       case 'IDLE':
-        // מחפשים את הדגל
-        if (this.buffer.endsWith(SonicConfig.START_TOKEN)) {
+        if (this.buffer.length > 32) this.buffer = this.buffer.slice(-24);
+        if (this.buffer.endsWith(SonicConfig.SYNC_TOKEN)) {
           this.onLog('🔹 SYNC OK! Reading header...');
           this.state = 'READ_LENGTH';
           this.buffer = '';
@@ -32,7 +33,7 @@ export class Decoder {
           this.onLog(`🔹 Expecting: ${this.messageLength} chars`);
           
           // הגנה מפני אורך לא הגיוני (זבל)
-          if (this.messageLength === 0 || this.messageLength > 50) {
+          if (this.messageLength === 0 || this.messageLength > 128) {
             this.onLog(`⚠️ Weird length (${this.messageLength}), resetting.`);
             this.reset();
           } else {
@@ -48,22 +49,31 @@ export class Decoder {
         this.onProgress(progress);
 
         if (this.buffer.length >= targetBits) {
-          this.onLog('🔹 Payload received. Decoding...');
-          
-          // --- שינוי: מנסים לפענח מיד, לפני ה-Checksum ---
+          this.onLog('🔹 Payload received. Checking...');
+          this.pendingDataBinary = this.buffer.slice(0, targetBits);
+          this.buffer = this.buffer.slice(targetBits);
+          this.state = 'CHECK';
+        }
+        break;
+
+      case 'CHECK':
+        if (this.buffer.length >= 8) {
+          const checksumReceived = parseInt(this.buffer.slice(0, 8), 2);
           try {
-            const rawMessage = BinaryUtils.binaryToString(this.buffer);
-            this.onLog(`💡 Raw Content: "${rawMessage}"`);
-            
-            // אנחנו מוותרים על בדיקת ה-Checksum הקשוחה כרגע
-            // ומציגים את ההודעה בכל מקרה
-            this.onMessageDecoded(rawMessage);
-            this.reset();
-            
-          } catch (e) {
-            this.onLog('❌ Binary Error');
-            this.reset();
+            const msg = BinaryUtils.binaryToString(this.pendingDataBinary);
+            let checksumExpected = 0;
+            for (let i = 0; i < msg.length; i++) checksumExpected ^= msg.charCodeAt(i);
+
+            if (checksumReceived === checksumExpected) {
+              this.onLog(`💡 Verified: "${msg}"`);
+              this.onMessageDecoded(msg);
+            } else {
+              this.onLog(`⚠️ Checksum mismatch. Ignoring.`);
+            }
+          } catch {
+            this.onLog('❌ Decode error');
           }
+          this.reset();
         }
         break;
     }
@@ -73,6 +83,7 @@ export class Decoder {
     this.state = 'IDLE';
     this.buffer = '';
     this.messageLength = 0;
+    this.pendingDataBinary = '';
     this.onProgress(0);
   }
 }

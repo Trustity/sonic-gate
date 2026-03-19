@@ -12,9 +12,9 @@ function App() {
   const [freq, setFreq] = useState(0);
   const [isListening, setIsListening] = useState(false);
   const [decodedMsg, setDecodedMsg] = useState('');
-  
-  // --- סטייט ללוגים ---
+  const [receiveProgress, setReceiveProgress] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
+  const [isSending, setIsSending] = useState(false);
   
   const receiverRef = useRef<Receiver | null>(null);
 
@@ -30,10 +30,11 @@ function App() {
     
     receiverRef.current.onMessageDecoded = (msg) => {
       setDecodedMsg(msg);
+      setReceiveProgress(0);
       if (navigator.vibrate) navigator.vibrate(200);
     };
 
-    // --- חיבור הלוג למסך ---
+    receiverRef.current.onProgress = setReceiveProgress;
     receiverRef.current.onLog = (msg) => {
       addLog(msg);
     };
@@ -60,10 +61,14 @@ function App() {
   };
 
   const handleSend = async () => {
-    if (!text) return;
-    const encodedPayload = Encoder.encode(text);
-    console.log(`Sending: ${encodedPayload}`);
-    await transmitter.transmit(encodedPayload);
+    if (!text.trim() || isSending) return;
+    setIsSending(true);
+    try {
+      const encodedPayload = Encoder.encode(text);
+      await transmitter.transmit(encodedPayload);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -79,14 +84,17 @@ function App() {
           <div className="flex gap-2">
             <input 
               value={text} 
-              onChange={e => setText(e.target.value)}
-              className="bg-gray-800 text-white px-4 py-3 rounded-lg flex-1 font-mono"
+              onChange={e => setText(e.target.value.slice(0, 128))}
+              placeholder="Type a message (max 128 chars)"
+              maxLength={128}
+              className="bg-gray-800 text-white px-4 py-3 rounded-lg flex-1 font-mono placeholder-gray-500"
             />
             <button 
               onClick={handleSend}
-              className="bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-lg font-bold"
+              disabled={isSending || !text.trim()}
+              className="bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-bold"
             >
-              SEND
+              {isSending ? '…' : 'SEND'}
             </button>
           </div>
         </div>
@@ -106,6 +114,15 @@ function App() {
           </div>
           
           <FrequencyVisualizer currentFreq={freq} />
+
+          {receiveProgress > 0 && receiveProgress < 100 && (
+            <div className="mt-3 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-green-500/60 transition-all duration-150"
+                style={{ width: `${receiveProgress}%` }}
+              />
+            </div>
+          )}
 
           {/* --- תיבת לוגים (DEBUG LOG) --- */}
           <div className="mt-4 bg-black/40 p-3 rounded text-[10px] font-mono text-gray-400 h-24 overflow-y-auto border border-gray-800">

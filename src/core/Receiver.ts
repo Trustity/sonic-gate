@@ -22,6 +22,7 @@ export class Receiver {
   public onStatusChange: (status: ReceiverStatus) => void = () => {};
   public onFrequencyDetected: (freq: number) => void = () => {};
   public onMessageDecoded: (msg: string) => void = () => {};
+  public onProgress: (percent: number) => void = () => {};
   public onLog: (log: string) => void = () => {};
 
   constructor() {
@@ -35,10 +36,7 @@ export class Receiver {
     // 2. חיבור לוגים מהדיקודר (כדי לראות SYNC ו-LENGTH)
     this.decoder.onLog = (msg) => this.onLog(msg);
 
-    // 3. עדכון התקדמות (אופציונלי, כדי לא להפציץ את הלוג)
-    this.decoder.onProgress = (percent) => {
-      if (percent % 20 === 0) this.onLog(`Reading... ${percent}%`);
-    }
+    this.decoder.onProgress = (percent) => this.onProgress(percent);
   }
 
   async start(): Promise<boolean> {

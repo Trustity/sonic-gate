@@ -1,6 +1,5 @@
 // src/core/Transmitter.ts
 import { SonicConfig } from './SonicConfig';
-import { BinaryUtils } from '../utils/BinaryUtils';
 
 export class Transmitter {
   private audioContext: AudioContext | null = null;
@@ -20,16 +19,17 @@ export class Transmitter {
     }
   }
 
-  public async transmit(text: string): Promise<void> {
+  /** מקבל רצף בינארי (0/1) מוכן לשידור - Encoder.encode() */
+  public async transmit(binarySequence: string): Promise<void> {
     this.initAudioContext();
     if (!this.audioContext) return;
 
-    // 1. המרת הטקסט לביטים + הוספת פתיח
-    const rawBinary = BinaryUtils.stringToBinary(text);
-    const fullSequence = SonicConfig.START_TOKEN + rawBinary;
+    if (!/^[01]+$/.test(binarySequence)) {
+      console.error('[Transmitter] Invalid binary sequence');
+      return;
+    }
 
-    console.log(`[Transmitter] Sending: ${text}`);
-    console.log(`[Transmitter] Binary Sequence: ${fullSequence}`);
+    console.log(`[Transmitter] Sending ${binarySequence.length} bits`);
 
     // 2. יצירת הכלים
     this.oscillator = this.audioContext.createOscillator();
@@ -41,13 +41,13 @@ export class Transmitter {
 
     // 3. תזמון השידור
     const startTime = this.audioContext.currentTime + 0.1;
-    this.scheduleFrequencies(fullSequence, startTime);
+    this.scheduleFrequencies(binarySequence, startTime);
 
     // 4. הפעלה
     this.oscillator.start(startTime);
     
     // 5. עצירה מתוכננת
-    const totalDuration = fullSequence.length * SonicConfig.BIT_DURATION;
+    const totalDuration = binarySequence.length * SonicConfig.BIT_DURATION;
     this.oscillator.stop(startTime + totalDuration);
 
     this.oscillator.onended = () => {
