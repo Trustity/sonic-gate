@@ -85,7 +85,7 @@ export class Decoder {
     }
   }
 
-  private reset() {
+  public reset() {
     this.state = 'IDLE';
     this.buffer = '';
     this.messageLength = 0;

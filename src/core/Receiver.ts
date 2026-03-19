@@ -82,6 +82,13 @@ export class Receiver {
     }
   }
 
+  reset() {
+    this.decoder.reset();
+    this.isReceiving = false;
+    this.bitSamples = [];
+    this.silenceCounter = 0;
+  }
+
   stop() {
     if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
     this.mediaStream?.getTracks().forEach(track => track.stop());
