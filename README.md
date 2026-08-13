@@ -1,46 +1,100 @@
-# Sonic Gate
+# Sonic-Gate
 
-**העברת מסרים באמצעות הקול** — מערכת FSK (Frequency Shift Keying) להעברת טקסט בין מכשירים דרך הרמקול והמיקרופון.
+**Acoustic data transmission** — a Trustity Labs proof-of-concept that sends text (and small files) between devices using only sound waves. No Wi‑Fi, no Bluetooth, no cables.
 
-## איך זה עובד
+> Part of **[Trustity Labs](https://labs.trustity.co)** · Experimental research from [Trustity](https://trustity.co)
 
-1. **משדר:** ממיר טקסט לרצף בינארי → כל ביט (0/1) = תדר צליל שונה (1500Hz / 3500Hz)
-2. **מקלט:** המיקרופון מזהה תדרים → ממיר חזרה לביטים → מפענח לטקסט
+**Try it live:** [sonic-gate.vercel.app](https://sonic-gate.vercel.app)
 
-## התקנה והרצה
+---
+
+## What it does
+
+Two devices in the same room can exchange short messages through the speaker and microphone:
+
+1. **Transmit** — text becomes an FSK audio signal (different tones for `0` and `1`)
+2. **Receive** — the mic listens, detects frequencies, and reconstructs the message
+
+Useful as a demo of **air-gapped / network-bypass** communication ideas — not a production channel.
+
+---
+
+## Quick start
 
 ```bash
 npm install
 npm run dev
 ```
 
-פתח את הדפדפן ב־`http://localhost:5173`
+Open [http://localhost:5173](http://localhost:5173)
 
-## שימוש
+| Script | What it does |
+|--------|----------------|
+| `npm run dev` | Local development |
+| `npm run build` | Production build |
+| `npm run preview` | Preview the build |
 
-- **שידור:** הקלד הודעה ולחץ SEND — הרמקול ישדר את המסר
-- **קליטה:** לחץ ENABLE MIC, הצב את המכשיר קרוב למשדר — ההודעה תופיע אוטומטית
+No environment variables required. Mic access needs a secure context (HTTPS in production; `localhost` is fine).
 
-**טיפ:** לעבודה יציבה — שני מכשירים באותו חדר, או שני טאבים (אחד משדר, אחד מקשיב).
+---
 
-## פרוטוקול
+## How to use
 
-| חלק | ביטים | תיאור |
-|-----|-------|-------|
-| Sync | 16 | `1010101010101010` — סנכרון |
-| Length | 8 | אורך ההודעה (1–128 בתים) |
-| Data | N×8 | הטקסט (ASCII) |
-| Checksum | 8 | XOR של כל התווים |
-| Tail | 12 | סיום בטוח |
+1. Open the app on **two devices** (or two browser tabs)
+2. On device A: type a message → **SEND** (speaker plays tones)
+3. On device B: tap **ENABLE MIC** and hold it near the speaker
+4. When decoding succeeds, the message appears under **DECODED**
 
-## תצורה (SonicConfig)
+**Tips**
+- Quieter rooms work better
+- Keep phones close (roughly arm’s length)
+- Max text length today: **128 ASCII characters**
+- Toggle **β file transfer** for the experimental small-file mode (≤ ~5KB)
 
-- **FREQ_ZERO:** 1500 Hz (ביט 0)
-- **FREQ_ONE:** 3500 Hz (ביט 1)
-- **BAUD_RATE:** 5 ביט/שנייה (אטי יחסית — יציבות ברעש)
+---
 
-## טכנולוגיות
+## Protocol (high level)
+
+| Segment | Bits | Role |
+|---------|------|------|
+| Sync | 16 | `1010101010101010` |
+| Length | 8 | Payload length (1–128 bytes) |
+| Data | N×8 | ASCII text |
+| Checksum | 8 | XOR of all characters |
+| Tail | 12 | End marker |
+
+**FSK tones**
+
+| Bit | Frequency |
+|-----|-----------|
+| `0` | 1500 Hz |
+| `1` | 3500 Hz |
+
+Baud rate in code: **3 bit/s** (slow on purpose for robustness in noisy rooms).
+
+---
+
+## Stack
 
 - React 19 + TypeScript + Vite
-- Web Audio API (OscillatorNode, AnalyserNode)
+- Web Audio API (`OscillatorNode`, `AnalyserNode`)
 - Tailwind CSS
+- Optional PWA install via `vite-plugin-pwa`
+
+Everything runs **in the browser** — no backend.
+
+---
+
+## Trustity Labs
+
+Sonic-Gate is a research surface under [Trustity Labs](https://labs.trustity.co/#sonic-gate).
+
+Trustity builds endpoint and edge security products (VisionX, GenGuard, Vault/PAM, HostGuard, and more) — see [trustity.co](https://trustity.co).
+
+**Disclaimer:** experimental engineering only. Not for production environments. Use at your own risk.
+
+---
+
+## License / status
+
+Private research POC under the Trustity organization. Expect breakage; APIs and protocol details may change.

@@ -4,6 +4,7 @@ import { Receiver } from './core/Receiver';
 import { Encoder } from './protocol/Encoder';
 import { FrequencyVisualizer } from './components/FrequencyVisualizer';
 import { FileTransferBeta, processReceivedForFile } from './components/FileTransferBeta';
+import { LabsChrome, LabsFooter } from './components/LabsChrome';
 import { useMessageHistory } from './hooks/useMessageHistory';
 import { Transmitter } from './core/Transmitter';
 
@@ -110,25 +111,27 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col items-center p-4 font-sans">
-      <div className="w-full max-w-lg flex justify-between items-center mb-6">
-        <h1 className="text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">
-          SONIC<span className="text-white">GATE</span>
-        </h1>
+    <div className="flex min-h-screen flex-col items-center p-4 pb-10 sm:p-6">
+      <LabsChrome />
+
+      <div className="mb-4 flex w-full max-w-lg justify-end">
         <button
+          type="button"
           onClick={() => setBetaMode((b) => !b)}
-          className={`text-xs px-2 py-1 rounded font-mono ${
-            betaMode ? 'bg-amber-600/30 text-amber-400' : 'bg-gray-800 text-gray-500'
+          className={`rounded border px-2.5 py-1 font-mono text-[11px] tracking-wide transition-colors ${
+            betaMode
+              ? 'border-amber-500/40 bg-amber-600/20 text-amber-400'
+              : 'border-lab-border bg-lab-card text-lab-dim hover:text-lab-muted'
           }`}
         >
-          β
+          β file transfer
         </button>
       </div>
 
-      <div className="grid gap-8 w-full max-w-lg">
+      <div className="grid w-full max-w-lg gap-5">
         {/* TRANSMITTER */}
-        <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 shadow-2xl">
-          <label className="text-xs font-bold text-gray-500 mb-2 block tracking-widest">
+        <div className="rounded-xl border border-lab-border bg-lab-card p-5 sm:p-6">
+          <label className="mb-3 block text-[10px] font-bold tracking-[0.2em] text-lab-dim">
             TRANSMITTER
           </label>
           <div className="flex gap-2">
@@ -137,12 +140,13 @@ function App() {
               onChange={(e) => setText(e.target.value.slice(0, 128))}
               placeholder="Type a message (max 128 chars)"
               maxLength={128}
-              className="bg-gray-800 text-white px-4 py-3 rounded-lg flex-1 font-mono placeholder-gray-500"
+              className="flex-1 rounded-lg border border-lab-border bg-lab-elevated px-4 py-3 font-mono text-white placeholder-lab-dim outline-none focus:border-lab-border-strong"
             />
             <button
+              type="button"
               onClick={handleSend}
               disabled={isSending || !text.trim()}
-              className="bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-bold"
+              className="rounded-lg bg-lab-accent px-5 py-3 font-bold text-lab-bg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isSending ? '…' : 'SEND'}
             </button>
@@ -151,13 +155,18 @@ function App() {
         </div>
 
         {/* RECEIVER */}
-        <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 shadow-2xl relative overflow-hidden">
-          <div className="flex justify-between items-center mb-4">
-            <label className="text-xs font-bold text-gray-500 tracking-widest">RECEIVER</label>
+        <div className="relative overflow-hidden rounded-xl border border-lab-border bg-lab-card p-5 sm:p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <label className="text-[10px] font-bold tracking-[0.2em] text-lab-dim">
+              RECEIVER
+            </label>
             <button
+              type="button"
               onClick={toggleListen}
-              className={`text-xs px-3 py-1 rounded-full font-bold transition-colors ${
-                isListening ? 'bg-red-500/20 text-red-400' : 'bg-gray-700 text-gray-300'
+              className={`rounded-full px-3 py-1 text-xs font-bold transition-colors ${
+                isListening
+                  ? 'bg-red-500/20 text-red-400'
+                  : 'border border-lab-border bg-lab-elevated text-lab-muted hover:text-white'
               }`}
             >
               {isListening ? 'STOP MIC' : 'ENABLE MIC'}
@@ -167,45 +176,49 @@ function App() {
           <FrequencyVisualizer currentFreq={freq} />
 
           {receiveProgress > 0 && receiveProgress < 100 && (
-            <div className="mt-3 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-lab-elevated">
               <div
-                className="h-full bg-green-500/60 transition-all duration-150"
+                className="h-full bg-lab-accent/70 transition-all duration-150"
                 style={{ width: `${receiveProgress}%` }}
               />
             </div>
           )}
 
-          <div className="mt-4 bg-black/40 p-3 rounded text-[10px] font-mono text-gray-400 h-24 overflow-y-auto border border-gray-800">
-            {logs.length === 0 && <div className="text-gray-600 italic">Logs will appear here...</div>}
+          <div className="mt-4 h-24 overflow-y-auto rounded border border-lab-border bg-black/40 p-3 font-mono text-[10px] text-lab-muted">
+            {logs.length === 0 && (
+              <div className="italic text-lab-dim">Logs will appear here...</div>
+            )}
             {logs.map((log, i) => (
-              <div key={i} className="border-b border-gray-800/50 pb-1 mb-1 last:border-0">
+              <div key={i} className="mb-1 border-b border-lab-border/50 pb-1 last:mb-0 last:border-0">
                 {log}
               </div>
             ))}
           </div>
 
           {(decodedMsg || receivedFile) && (
-            <div className="mt-4 p-4 bg-green-900/20 border border-green-500/30 rounded-xl text-center">
-              <span className="text-[10px] text-green-400 block mb-1">DECODED</span>
+            <div className="mt-4 rounded-xl border border-lab-accent/30 bg-lab-accent/10 p-4 text-center">
+              <span className="mb-1 block text-[10px] text-lab-accent">DECODED</span>
               {decodedMsg && (
-                <span className="text-2xl font-mono font-bold text-white block mb-3">
+                <span className="mb-3 block font-mono text-2xl font-bold text-white">
                   {decodedMsg}
                 </span>
               )}
               {receivedFile && (
                 <div className="mb-3">
-                  <span className="text-sm text-gray-400 block">File received</span>
+                  <span className="block text-sm text-lab-muted">File received</span>
                   <button
+                    type="button"
                     onClick={downloadReceivedFile}
-                    className="text-xs px-3 py-1 mt-1 rounded bg-amber-600/40 text-amber-400 hover:bg-amber-600/60"
+                    className="mt-1 rounded bg-amber-600/40 px-3 py-1 text-xs text-amber-400 hover:bg-amber-600/60"
                   >
                     Download
                   </button>
                 </div>
               )}
               <button
+                type="button"
                 onClick={handleReset}
-                className="text-xs px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium"
+                className="rounded-lg border border-lab-border bg-lab-elevated px-4 py-2 text-xs font-medium text-lab-muted hover:text-white"
               >
                 Reset — Ready for next
               </button>
@@ -214,28 +227,34 @@ function App() {
         </div>
 
         {/* HISTORY */}
-        <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 shadow-2xl">
-          <div className="flex justify-between items-center mb-3">
-            <label className="text-xs font-bold text-gray-500 tracking-widest">HISTORY</label>
+        <div className="rounded-xl border border-lab-border bg-lab-card p-5 sm:p-6">
+          <div className="mb-3 flex items-center justify-between">
+            <label className="text-[10px] font-bold tracking-[0.2em] text-lab-dim">
+              HISTORY
+            </label>
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={exportHistory}
                 disabled={history.length === 0}
-                className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-400"
+                className="rounded border border-lab-border bg-lab-elevated px-2 py-1 text-xs text-lab-muted disabled:opacity-40 hover:text-white"
               >
                 Export
               </button>
               <button
+                type="button"
                 onClick={clearHistory}
                 disabled={history.length === 0}
-                className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-400"
+                className="rounded border border-lab-border bg-lab-elevated px-2 py-1 text-xs text-lab-muted disabled:opacity-40 hover:text-white"
               >
                 Clear
               </button>
             </div>
           </div>
-          <div className="max-h-32 overflow-y-auto text-sm font-mono text-gray-400 space-y-1">
-            {history.length === 0 && <div className="text-gray-600 italic">No messages yet</div>}
+          <div className="max-h-32 space-y-1 overflow-y-auto font-mono text-sm text-lab-muted">
+            {history.length === 0 && (
+              <div className="italic text-lab-dim">No messages yet</div>
+            )}
             {history.slice(0, 20).map((e) => (
               <div key={e.id} className="truncate">
                 {e.msg}
@@ -244,6 +263,8 @@ function App() {
           </div>
         </div>
       </div>
+
+      <LabsFooter />
     </div>
   );
 }

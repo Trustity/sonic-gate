@@ -9,11 +9,12 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'Sonic Gate',
-        short_name: 'SonicGate',
-        description: 'העברת מסרים באמצעות הקול',
-        theme_color: '#0a0a0a',
-        background_color: '#0a0a0a',
+        name: 'Sonic-Gate · Trustity Labs',
+        short_name: 'Sonic-Gate',
+        description:
+          'Acoustic data transmission POC from Trustity Labs — send text through sound waves.',
+        theme_color: '#050607',
+        background_color: '#050607',
         display: 'standalone',
       },
     }),
