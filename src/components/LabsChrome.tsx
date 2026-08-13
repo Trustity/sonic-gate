@@ -4,13 +4,21 @@ export function LabsChrome() {
       <div className="mb-5 flex items-center justify-between gap-3 text-[11px] tracking-wide text-lab-dim">
         <a
           href="https://labs.trustity.co"
-          className="inline-flex items-center gap-2 text-lab-muted transition-colors hover:text-lab-accent"
+          className="inline-flex items-center gap-2.5 transition-colors hover:opacity-90"
         >
-          <span
-            className="inline-block h-1.5 w-1.5 rounded-full bg-lab-accent shadow-accent"
-            aria-hidden
-          />
-          Trustity Labs
+          <span className="inline-flex h-4 w-4 items-end justify-center gap-[2px]" aria-hidden>
+            <span className="h-[62%] w-[3px] origin-bottom -skew-x-12 bg-white/50" />
+            <span className="h-full w-[3.5px] origin-bottom -skew-x-12 bg-lab-accent shadow-accent" />
+            <span className="h-[62%] w-[3px] origin-bottom -skew-x-12 bg-white/50" />
+          </span>
+          <span className="font-sans text-[12px] font-bold tracking-wide">
+            <span className="text-[#c967e5]">T</span>
+            <span className="text-white">RUSTITY</span>
+            <span className="mx-1.5 inline-block h-1.5 w-1.5 rounded-full bg-lab-accent align-middle shadow-accent" />
+            <span className="font-mono font-medium tracking-[0.18em] text-lab-accent">
+              LABS
+            </span>
+          </span>
         </a>
         <a
           href="https://trustity.co"
