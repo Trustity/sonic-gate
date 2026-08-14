@@ -2,7 +2,7 @@
 
 **Acoustic data transmission** — a Trustity Labs proof-of-concept that sends text (and small files) between devices using only sound waves. No Wi‑Fi, no Bluetooth, no cables.
 
-> Part of **[Trustity Labs](https://labs.trustity.co)** · Experimental research from [Trustity](https://trustity.co)
+> Part of **[Trustity Labs](https://trustitylabs.com)** · Experimental research from [Trustity](https://trustity.co)
 
 **Try it live:** [sonic-gate.vercel.app](https://sonic-gate.vercel.app)
 
@@ -87,7 +87,7 @@ Everything runs **in the browser** — no backend.
 
 ## Trustity Labs
 
-Sonic-Gate is a research surface under [Trustity Labs](https://labs.trustity.co/#sonic-gate).
+Sonic-Gate is a research surface under [Trustity Labs](https://trustitylabs.com/#sonic-gate).
 
 Trustity builds endpoint and edge security products (VisionX, GenGuard, Vault/PAM, HostGuard, and more) — see [trustity.co](https://trustity.co).
 

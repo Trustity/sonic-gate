@@ -3,7 +3,7 @@ export function LabsChrome() {
     <div className="mb-8 w-full max-w-lg">
       <div className="mb-5 flex items-center justify-between gap-3 text-[11px] tracking-wide text-lab-dim">
         <a
-          href="https://labs.trustity.co"
+          href="https://trustitylabs.com"
           className="inline-flex items-center gap-2.5 transition-colors hover:opacity-90"
         >
           <span className="inline-flex h-4 w-4 items-end justify-center gap-[2px]" aria-hidden>
@@ -51,7 +51,7 @@ export function LabsFooter() {
       <p className="leading-relaxed">
         Experimental engineering · not for production.{" "}
         <a
-          href="https://labs.trustity.co/#sonic-gate"
+          href="https://trustitylabs.com/#sonic-gate"
           className="text-lab-muted transition-colors hover:text-lab-accent"
         >
           Back to Labs
