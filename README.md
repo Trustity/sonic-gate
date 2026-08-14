@@ -4,7 +4,7 @@
 
 > Part of **[Trustity Labs](https://trustitylabs.com)** · Experimental research from [Trustity](https://trustity.co)
 
-**Try it live:** [sonic-gate.vercel.app](https://sonic-gate.vercel.app)
+**Try it live:** [sonic-gate.trustitylabs.com](https://sonic-gate.trustitylabs.com)
 
 ---
 
