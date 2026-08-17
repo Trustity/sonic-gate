@@ -14,11 +14,13 @@ import { MicLevelMeter } from './components/MicLevelMeter';
 import { TxIndicator } from './components/TxIndicator';
 import { TipsPanel } from './components/TipsPanel';
 import { LoopbackPanel } from './components/LoopbackPanel';
+import { LiveStatusBar, type LiveStatus } from './components/LiveStatusBar';
 import {
   SonicConfig,
   SPEED_PRESETS,
   type SpeedPreset,
 } from './core/SonicConfig';
+import type { ReceiverActivity } from './core/Receiver';
 import {
   processReceivedForFile,
   parseFileProtocolMessage,
@@ -42,7 +44,13 @@ function App() {
   const [isSending, setIsSending] = useState(false);
   const [txActive, setTxActive] = useState(false);
   const [betaMode, setBetaMode] = useState(false);
-  const [speedPreset, setSpeedPreset] = useState<SpeedPreset>('normal');
+  const [speedPreset, setSpeedPreset] = useState<SpeedPreset>('slow');
+  const [liveStatus, setLiveStatus] = useState<LiveStatus>({
+    label: 'Ready',
+    detail: 'Enable mic on the receiver, then SEND from the other device',
+    tone: 'idle',
+  });
+
   const fileSessionsRef = useRef<FileReceiveState>(new Map());
   const [receivedFile, setReceivedFile] = useState<{ name: string; blob: Blob } | null>(null);
 
@@ -58,7 +66,58 @@ function App() {
   }, [speedPreset]);
 
   useEffect(() => {
-    transmitter.onPhaseChange = (phase) => setTxActive(phase === 'transmitting');
+    transmitter.onPhaseChange = (phase) => {
+      setTxActive(phase === 'transmitting');
+      if (phase === 'transmitting' && tab === 'transfer') {
+        setLiveStatus({
+          label: 'Transmitting…',
+          detail: `${SPEED_PRESETS[speedPreset].label} · speaker output active`,
+          tone: 'active',
+        });
+      }
+    };
+  }, [tab, speedPreset]);
+
+  const applyRxActivity = useCallback((activity: ReceiverActivity) => {
+    switch (activity) {
+      case 'listening':
+        setLiveStatus({
+          label: 'Listening',
+          detail: 'Waiting for acoustic signal…',
+          tone: 'idle',
+        });
+        break;
+      case 'signal_detected':
+        setLiveStatus({
+          label: 'Signal detected',
+          detail: 'Locking sync and reading frame…',
+          tone: 'active',
+        });
+        break;
+      case 'decoding':
+        setLiveStatus({
+          label: 'Decoding',
+          detail: 'Reading payload bits…',
+          tone: 'active',
+        });
+        break;
+      case 'signal_lost':
+        setLiveStatus({
+          label: 'Signal lost',
+          detail: 'No tones detected — ready for the next send',
+          tone: 'warn',
+        });
+        break;
+      case 'decode_timeout':
+        setLiveStatus({
+          label: 'Decode timed out',
+          detail: 'Try Slow speed, quieter room, or hold devices closer',
+          tone: 'error',
+        });
+        break;
+      case 'idle':
+        break;
+    }
   }, []);
 
   useEffect(() => {
@@ -81,6 +140,11 @@ function App() {
           setReceivedFile({ name, blob });
           setFileReceiveProgress(100);
           addLog(`📁 File received: ${name}`);
+          setLiveStatus({
+            label: 'File received',
+            detail: name,
+            tone: 'success',
+          });
         },
       );
 
@@ -94,15 +158,30 @@ function App() {
 
       setDecodedMsg(msg);
       addReceived(msg);
+      setLiveStatus({
+        label: 'Message received',
+        detail: msg.length > 64 ? `${msg.slice(0, 64)}…` : msg,
+        tone: 'success',
+      });
     };
 
-    receiverRef.current.onProgress = setReceiveProgress;
+    receiverRef.current.onProgress = (p) => {
+      setReceiveProgress(p);
+      if (p > 0 && p < 100) {
+        setLiveStatus({
+          label: 'Decoding',
+          detail: `${p}% of payload received`,
+          tone: 'active',
+        });
+      }
+    };
+    receiverRef.current.onActivityChange = applyRxActivity;
     receiverRef.current.onLog = (msg) => addLog(msg);
 
     return () => {
       receiverRef.current?.stop();
     };
-  }, [addLog, addReceived]);
+  }, [addLog, addReceived, applyRxActivity]);
 
   const ensureMic = async (): Promise<boolean> => {
     if (isListening) return true;
@@ -120,6 +199,11 @@ function App() {
       receiverRef.current?.stop();
       setIsListening(false);
       setMicLevel(0);
+      setLiveStatus({
+        label: 'Mic off',
+        detail: 'Tap ENABLE MIC on the receiver',
+        tone: 'idle',
+      });
     } else {
       const success = await ensureMic();
       if (success) {
@@ -205,13 +289,21 @@ function App() {
         </div>
       </div>
 
-      <p className="mb-4 w-full max-w-lg text-[10px] text-lab-dim">
+      <p className="mb-3 w-full max-w-lg text-[10px] text-lab-dim">
         {SPEED_PRESETS[speedPreset].hint} · protocol v{SonicConfig.PROTOCOL_VERSION}
       </p>
 
+      <div className="w-full max-w-lg">
+        <LiveStatusBar {...liveStatus} />
+      </div>
+
       {tab === 'loopback' ? (
         <div className="grid w-full max-w-lg gap-5">
-          <LoopbackPanel speedPreset={speedPreset} onLog={addLog} />
+          <LoopbackPanel
+            speedPreset={speedPreset}
+            onLog={addLog}
+            onStatus={setLiveStatus}
+          />
           <TipsPanel />
         </div>
       ) : (

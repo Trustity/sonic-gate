@@ -66,6 +66,18 @@ export class Decoder {
 
   private checkV2Marker() {
     if (this.buffer.length < 16) return;
+
+    // v2 transmit repeats the 16-bit sync — consume the second preamble.
+    const maybeSync = this.buffer.slice(0, 16);
+    const syncErrors = maybeSync
+      .split('')
+      .filter((c, i) => c !== SonicConfig.SYNC_TOKEN[i]).length;
+    if (syncErrors <= 2) {
+      this.onLog('🔹 Sync preamble 2/2');
+      this.buffer = this.buffer.slice(16);
+      if (this.buffer.length < 16) return;
+    }
+
     const marker = this.buffer.slice(0, 16);
     const markerErrors = marker
       .split('')
@@ -173,5 +185,30 @@ export class Decoder {
     this.pendingDataBinary = '';
     this.protocolVersion = 1;
     this.onProgress(0);
+  }
+
+  /** True while a frame is partially received (not idle). */
+  public isBusy(): boolean {
+    return this.state !== 'IDLE';
+  }
+
+  /** Human-readable decode phase for UI status. */
+  public getPhaseLabel(): string | null {
+    switch (this.state) {
+      case 'IDLE':
+        return null;
+      case 'V2_CHECK_MARKER':
+        return 'syncing';
+      case 'V2_READ_VERSION':
+      case 'V1_READ_LENGTH':
+      case 'READ_LENGTH':
+        return 'reading header';
+      case 'READ_DATA':
+        return 'reading payload';
+      case 'CHECK':
+        return 'verifying';
+      default:
+        return 'decoding';
+    }
   }
 }

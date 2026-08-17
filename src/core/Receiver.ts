@@ -3,6 +3,14 @@ import { Decoder } from '../protocol/Decoder';
 
 export type ReceiverStatus = 'listening' | 'stopped' | 'denied';
 
+export type ReceiverActivity =
+  | 'idle'
+  | 'listening'
+  | 'signal_detected'
+  | 'decoding'
+  | 'signal_lost'
+  | 'decode_timeout';
+
 export class Receiver {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
@@ -17,6 +25,7 @@ export class Receiver {
   private bitSamples: ('0' | '1')[] = [];
 
   public onStatusChange: (status: ReceiverStatus) => void = () => {};
+  public onActivityChange: (activity: ReceiverActivity) => void = () => {};
   public onFrequencyDetected: (freq: number) => void = () => {};
   public onMicLevel: (level: number) => void = () => {};
   public onMessageDecoded: (msg: string) => void = () => {};
@@ -29,13 +38,22 @@ export class Receiver {
       this.onLog(`✅ DECODED: ${msg.slice(0, 40)}${msg.length > 40 ? '…' : ''}`);
       this.onMessageDecoded(msg);
       this.isReceiving = false;
+      this.emitActivity('idle');
     };
     this.decoder.onAckReceived = (idx) => {
       this.onAckReceived(idx);
       this.isReceiving = false;
+      this.emitActivity('idle');
     };
     this.decoder.onLog = (msg) => this.onLog(msg);
-    this.decoder.onProgress = (percent) => this.onProgress(percent);
+    this.decoder.onProgress = (percent) => {
+      this.onProgress(percent);
+      if (percent > 0) this.emitActivity('decoding');
+    };
+  }
+
+  private emitActivity(activity: ReceiverActivity) {
+    this.onActivityChange(activity);
   }
 
   getDecoder(): Decoder {
@@ -70,6 +88,7 @@ export class Receiver {
 
       this.onStatusChange('listening');
       this.onLog('Mic active. Waiting for signal…');
+      this.emitActivity('listening');
       this.loop();
 
       return true;
@@ -85,6 +104,7 @@ export class Receiver {
     this.isReceiving = false;
     this.bitSamples = [];
     this.silenceCounter = 0;
+    if (this.analyser) this.emitActivity('listening');
   }
 
   stop() {
@@ -97,6 +117,16 @@ export class Receiver {
 
     this.onStatusChange('stopped');
     this.onMicLevel(0);
+    this.emitActivity('idle');
+  }
+
+  /** ~60 animation frames; scale with baud so long v2 frames are not cut off. */
+  private silenceLimit(): number {
+    const bitMs = SonicConfig.BIT_DURATION * 1000;
+    const frameMs = 16;
+    // Allow ~1.5 s of quiet while syncing; much longer once payload decode started.
+    const base = this.decoder.isBusy() ? Math.ceil((bitMs * 200) / frameMs) : Math.ceil(1500 / frameMs);
+    return Math.max(90, base);
   }
 
   private loop = () => {
@@ -130,25 +160,38 @@ export class Receiver {
         this.isReceiving = true;
         this.bitSamples = [];
         this.onLog(`📶 Signal detected (${Math.round(freq)} Hz)`);
-        this.nextSampleTime = now + SonicConfig.BIT_DURATION * 0.6;
+        this.nextSampleTime = now + SonicConfig.BIT_DURATION * 0.5;
         this.silenceCounter = 0;
+        this.emitActivity('signal_detected');
       }
     } else {
       if (currentBit !== null) {
         this.bitSamples.push(currentBit);
         this.silenceCounter = 0;
+        if (this.decoder.isBusy()) this.emitActivity('decoding');
       } else {
         this.silenceCounter++;
-        if (this.silenceCounter > 90) {
-          this.onLog('❌ Signal lost');
+        const limit = this.silenceLimit();
+        if (this.silenceCounter > limit) {
+          if (this.decoder.isBusy()) {
+            this.onLog('❌ Decode timeout — partial frame discarded');
+            this.decoder.reset();
+            this.emitActivity('decode_timeout');
+          } else {
+            this.onLog('❌ Signal lost');
+            this.emitActivity('signal_lost');
+          }
           this.isReceiving = false;
           this.bitSamples = [];
+          this.silenceCounter = 0;
+          if (this.analyser) this.emitActivity('listening');
         }
       }
       if (now >= this.nextSampleTime) {
         const resolved = this.resolveBit();
         if (resolved !== null) {
           this.decoder.processBit(resolved);
+          if (this.decoder.isBusy()) this.emitActivity('decoding');
         }
         this.bitSamples = [];
         this.nextSampleTime += SonicConfig.BIT_DURATION;

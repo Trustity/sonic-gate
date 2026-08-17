@@ -18,6 +18,19 @@ git push origin main --tags
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-17
+
+### Fixed
+- **Decoder v2 double-sync** — receiver and loopback now consume the second sync preamble before the v2 marker (text transfer and loopback were broken since v0.3.0).
+- **Signal lost during long frames** — silence timeout scales with baud and decode state; partial frames get a decode timeout instead of a premature drop.
+- **Loopback** — shows pass/fail on the status bar when decode does not complete.
+
+### Added
+- **Live status bar** — single friendly line for current activity (listening, decoding, transmitting, errors) while logs stay unchanged.
+
+### Changed
+- Default speed preset back to **Slow** for first-time reliability.
+
 ## [0.3.0] - 2026-08-17
 
 Major reliability and UX release — protocol v2, file transfer ACK/retry, speed presets.

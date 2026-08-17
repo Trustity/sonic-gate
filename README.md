@@ -42,7 +42,7 @@ No environment variables required. Mic access needs a secure context (HTTPS in p
 
 Version history lives in **[CHANGELOG.md](./CHANGELOG.md)** (git tags, not on the Labs site).
 
-Current: **v0.3.0** — protocol v2, speed presets, file ACK/retry, loopback test.
+Current: **v0.3.1** — decode fix, live status bar, default Slow speed.
 
 ---
 
