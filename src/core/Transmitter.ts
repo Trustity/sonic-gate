@@ -9,18 +9,18 @@ export class Transmitter {
 
   public onPhaseChange: (phase: TransmitPhase) => void = () => {};
 
-  private initAudioContext() {
+  private async initAudioContext() {
     if (!this.audioContext) {
       this.audioContext = new (window.AudioContext ||
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     }
     if (this.audioContext.state === 'suspended') {
-      void this.audioContext.resume();
+      await this.audioContext.resume();
     }
   }
 
   public async transmit(binarySequence: string): Promise<void> {
-    this.initAudioContext();
+    await this.initAudioContext();
     if (!this.audioContext) return;
 
     if (!/^[01]+$/.test(binarySequence)) {

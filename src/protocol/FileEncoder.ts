@@ -26,12 +26,23 @@ function randomFileId(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const step = 8192;
+  for (let i = 0; i < bytes.length; i += step) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + step));
+  }
+  return btoa(binary);
+}
+
 export function encodeFileForChunks(file: File): Promise<FileChunk[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const buf = reader.result as ArrayBuffer;
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      try {
+        const buf = reader.result as ArrayBuffer;
+        const base64 = arrayBufferToBase64(buf);
       const fileId = randomFileId();
       const name = file.name.slice(0, MAX_NAME_LEN);
       const dataParts: string[] = [];
@@ -59,6 +70,9 @@ export function encodeFileForChunks(file: File): Promise<FileChunk[]> {
         });
       });
       resolve(chunks);
+      } catch (err) {
+        reject(err);
+      }
     };
     reader.onerror = () => reject(reader.error);
     reader.readAsArrayBuffer(file);

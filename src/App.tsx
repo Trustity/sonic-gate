@@ -101,6 +101,13 @@ function App() {
           tone: 'active',
         });
         break;
+      case 'finalizing':
+        setLiveStatus({
+          label: 'Finishing decode',
+          detail: 'Transmission ended — processing received bits',
+          tone: 'active',
+        });
+        break;
       case 'signal_lost':
         setLiveStatus({
           label: 'Signal lost',
@@ -210,6 +217,11 @@ function App() {
         setDecodedMsg('');
         setReceivedFile(null);
         setFileReceiveProgress(null);
+        setLiveStatus({
+          label: 'Listening',
+          detail: `Same speed on both devices: ${SPEED_PRESETS[speedPreset].label}`,
+          tone: 'idle',
+        });
       } else {
         setIsListening(false);
       }
@@ -293,7 +305,7 @@ function App() {
         {SPEED_PRESETS[speedPreset].hint} · protocol v{SonicConfig.PROTOCOL_VERSION}
       </p>
 
-      <div className="w-full max-w-lg">
+      <div className="sticky top-2 z-40 mb-4 w-full max-w-lg">
         <LiveStatusBar {...liveStatus} />
       </div>
 
@@ -345,10 +357,11 @@ function App() {
             {betaMode && (
               <FileTransferBeta
                 transmitter={transmitter}
-                receiver={receiverRef.current}
+                getReceiver={() => receiverRef.current}
                 isListening={isListening}
                 onLog={addLog}
                 onRequestMic={ensureMic}
+                onStatus={setLiveStatus}
               />
             )}
           </div>

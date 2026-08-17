@@ -20,8 +20,8 @@ export const SonicConfig = {
   PROTOCOL_VERSION: 2,
   TAIL: '000000000000',
 
-  /** Doubled sync preamble for v2 transmit only. */
-  SYNC_REPEAT: 2,
+  /** Single sync on the wire keeps frames shorter for acoustic decode. */
+  SYNC_REPEAT: 1,
 
   CHUNK_PAUSE_MS: 650,
   ACK_TIMEOUT_MS: 12_000,

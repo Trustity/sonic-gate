@@ -18,6 +18,17 @@ git push origin main --tags
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-08-17
+
+### Fixed
+- **Acoustic decode** — Goertzel FSK detection, wall-clock bit windows, and **finalize on silence** (end of TX triggers decode instead of "signal lost").
+- **Shorter v2 frames** — single sync on the wire (116 bits for HELLO vs 132).
+- **File picker / send** — safe base64 encoding for 5 KB files; `getReceiver()` fixes null receiver for ACK; chunk length guard.
+- **Status bar** — sticky, high-contrast "Now" line always visible at top.
+
+### Changed
+- Receiver reports **Finishing decode** while processing bits after transmission ends.
+
 ## [0.3.1] - 2026-08-17
 
 ### Fixed

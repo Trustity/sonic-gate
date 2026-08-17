@@ -1,5 +1,6 @@
 import { SonicConfig } from '../core/SonicConfig';
 import { Decoder } from '../protocol/Decoder';
+import { detectFskBit } from '../utils/Goertzel';
 
 export type ReceiverStatus = 'listening' | 'stopped' | 'denied';
 
@@ -8,21 +9,29 @@ export type ReceiverActivity =
   | 'listening'
   | 'signal_detected'
   | 'decoding'
+  | 'finalizing'
   | 'signal_lost'
   | 'decode_timeout';
+
+type Phase = 'idle' | 'receiving' | 'finalizing';
 
 export class Receiver {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private mediaStream: MediaStream | null = null;
   private animationFrameId: number | null = null;
+  private timeDomain = new Float32Array(2048);
 
   private decoder = new Decoder();
+  private phase: Phase = 'idle';
 
-  private isReceiving = false;
-  private nextSampleTime = 0;
-  private silenceCounter = 0;
-  private bitSamples: ('0' | '1')[] = [];
+  private signalStartMs = 0;
+  /** Index of the bit window currently being sampled. */
+  private activeBitIndex = 0;
+  private bitVotes: ('0' | '1')[] = [];
+  private silenceFrames = 0;
+  private finalizeStartMs = 0;
+  private bitsFed = 0;
 
   public onStatusChange: (status: ReceiverStatus) => void = () => {};
   public onActivityChange: (activity: ReceiverActivity) => void = () => {};
@@ -37,12 +46,12 @@ export class Receiver {
     this.decoder.onMessageDecoded = (msg) => {
       this.onLog(`✅ DECODED: ${msg.slice(0, 40)}${msg.length > 40 ? '…' : ''}`);
       this.onMessageDecoded(msg);
-      this.isReceiving = false;
+      this.resetCapture();
       this.emitActivity('idle');
     };
     this.decoder.onAckReceived = (idx) => {
       this.onAckReceived(idx);
-      this.isReceiving = false;
+      this.resetCapture();
       this.emitActivity('idle');
     };
     this.decoder.onLog = (msg) => this.onLog(msg);
@@ -71,6 +80,10 @@ export class Receiver {
       this.audioContext = new (window.AudioContext ||
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
 
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
@@ -81,8 +94,9 @@ export class Receiver {
 
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
       this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 4096;
-      this.analyser.smoothingTimeConstant = 0.5;
+      this.analyser.fftSize = 2048;
+      this.analyser.smoothingTimeConstant = 0.15;
+      this.timeDomain = new Float32Array(this.analyser.fftSize);
 
       source.connect(this.analyser);
 
@@ -101,9 +115,7 @@ export class Receiver {
 
   reset() {
     this.decoder.reset();
-    this.isReceiving = false;
-    this.bitSamples = [];
-    this.silenceCounter = 0;
+    this.resetCapture();
     if (this.analyser) this.emitActivity('listening');
   }
 
@@ -117,115 +129,115 @@ export class Receiver {
 
     this.onStatusChange('stopped');
     this.onMicLevel(0);
+    this.phase = 'idle';
     this.emitActivity('idle');
   }
 
-  /** ~60 animation frames; scale with baud so long v2 frames are not cut off. */
-  private silenceLimit(): number {
-    const bitMs = SonicConfig.BIT_DURATION * 1000;
-    const frameMs = 16;
-    // Allow ~1.5 s of quiet while syncing; much longer once payload decode started.
-    const base = this.decoder.isBusy() ? Math.ceil((bitMs * 200) / frameMs) : Math.ceil(1500 / frameMs);
-    return Math.max(90, base);
+  private resetCapture() {
+    this.phase = 'idle';
+    this.signalStartMs = 0;
+    this.activeBitIndex = 0;
+    this.bitVotes = [];
+    this.silenceFrames = 0;
+    this.finalizeStartMs = 0;
+    this.bitsFed = 0;
+    if (this.analyser) this.emitActivity('listening');
+  }
+
+  private bitDurationMs(): number {
+    return SonicConfig.BIT_DURATION * 1000;
+  }
+
+  private flushCurrentBitWindow() {
+    if (this.bitVotes.length === 0) return;
+    const zeros = this.bitVotes.filter((b) => b === '0').length;
+    const ones = this.bitVotes.length - zeros;
+    this.decoder.processBit(zeros >= ones ? '0' : '1');
+    this.bitsFed++;
+    this.bitVotes = [];
+    if (this.decoder.isBusy()) this.emitActivity('decoding');
+  }
+
+  private advanceCompletedBits(now: number) {
+    const completedIndex = Math.floor((now - this.signalStartMs) / this.bitDurationMs());
+    while (this.activeBitIndex < completedIndex) {
+      this.flushCurrentBitWindow();
+      this.activeBitIndex++;
+    }
+  }
+
+  private enterFinalize() {
+    if (this.phase === 'finalizing') return;
+    this.phase = 'finalizing';
+    this.finalizeStartMs = performance.now();
+    this.flushCurrentBitWindow();
+    this.onLog('⏳ Transmission ended — finishing decode…');
+    this.emitActivity('finalizing');
   }
 
   private loop = () => {
     if (!this.analyser || !this.audioContext) return;
 
-    const bufferLength = this.analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    this.analyser.getByteFrequencyData(dataArray);
+    this.analyser.getFloatTimeDomainData(this.timeDomain);
+    const sampleRate = this.audioContext.sampleRate;
 
-    let peak = 0;
-    const startIndex = Math.floor(800 / ((this.audioContext.sampleRate / 2) / dataArray.length));
-    for (let i = startIndex; i < dataArray.length; i++) {
-      if (dataArray[i] > peak) peak = dataArray[i];
+    let rms = 0;
+    for (let i = 0; i < this.timeDomain.length; i++) {
+      rms += this.timeDomain[i] * this.timeDomain[i];
     }
-    this.onMicLevel(Math.min(1, peak / 96));
+    rms = Math.sqrt(rms / this.timeDomain.length);
+    this.onMicLevel(Math.min(1, rms * 5));
 
-    const freq = this.findDominantFrequency(dataArray);
-    this.onFrequencyDetected(freq);
+    const bit = detectFskBit(
+      this.timeDomain,
+      sampleRate,
+      SonicConfig.FREQ_ZERO,
+      SonicConfig.FREQ_ONE,
+    );
 
-    let currentBit: '0' | '1' | null = null;
-    if (Math.abs(freq - SonicConfig.FREQ_ZERO) < SonicConfig.FREQ_TOLERANCE) {
-      currentBit = '0';
-    } else if (Math.abs(freq - SonicConfig.FREQ_ONE) < SonicConfig.FREQ_TOLERANCE) {
-      currentBit = '1';
-    }
+    if (bit === '0') this.onFrequencyDetected(SonicConfig.FREQ_ZERO);
+    else if (bit === '1') this.onFrequencyDetected(SonicConfig.FREQ_ONE);
 
-    const now = this.audioContext.currentTime;
+    const now = performance.now();
 
-    if (!this.isReceiving) {
-      if (currentBit !== null) {
-        this.isReceiving = true;
-        this.bitSamples = [];
-        this.onLog(`📶 Signal detected (${Math.round(freq)} Hz)`);
-        this.nextSampleTime = now + SonicConfig.BIT_DURATION * 0.5;
-        this.silenceCounter = 0;
+    if (this.phase === 'idle') {
+      if (bit !== null) {
+        this.phase = 'receiving';
+        this.signalStartMs = now;
+        this.activeBitIndex = 0;
+        this.bitVotes = [bit];
+        this.silenceFrames = 0;
+        this.bitsFed = 0;
+        this.onLog(`📶 Signal detected (${bit === '0' ? SonicConfig.FREQ_ZERO : SonicConfig.FREQ_ONE} Hz)`);
         this.emitActivity('signal_detected');
       }
-    } else {
-      if (currentBit !== null) {
-        this.bitSamples.push(currentBit);
-        this.silenceCounter = 0;
-        if (this.decoder.isBusy()) this.emitActivity('decoding');
+    } else if (this.phase === 'receiving') {
+      if (bit !== null) {
+        this.bitVotes.push(bit);
+        this.silenceFrames = 0;
       } else {
-        this.silenceCounter++;
-        const limit = this.silenceLimit();
-        if (this.silenceCounter > limit) {
-          if (this.decoder.isBusy()) {
-            this.onLog('❌ Decode timeout — partial frame discarded');
-            this.decoder.reset();
-            this.emitActivity('decode_timeout');
-          } else {
-            this.onLog('❌ Signal lost');
-            this.emitActivity('signal_lost');
-          }
-          this.isReceiving = false;
-          this.bitSamples = [];
-          this.silenceCounter = 0;
-          if (this.analyser) this.emitActivity('listening');
-        }
+        this.silenceFrames++;
+        if (this.silenceFrames >= 18) this.enterFinalize();
       }
-      if (now >= this.nextSampleTime) {
-        const resolved = this.resolveBit();
-        if (resolved !== null) {
-          this.decoder.processBit(resolved);
-          if (this.decoder.isBusy()) this.emitActivity('decoding');
+      this.advanceCompletedBits(now);
+    } else if (this.phase === 'finalizing') {
+      this.advanceCompletedBits(now);
+      this.flushCurrentBitWindow();
+
+      if (!this.decoder.isBusy()) {
+        if (this.bitsFed === 0) {
+          this.onLog('❌ No valid frame decoded');
+          this.emitActivity('signal_lost');
         }
-        this.bitSamples = [];
-        this.nextSampleTime += SonicConfig.BIT_DURATION;
+        this.resetCapture();
+      } else if (now - this.finalizeStartMs > 4000) {
+        this.onLog('❌ Decode timeout — partial frame discarded');
+        this.decoder.reset();
+        this.emitActivity('decode_timeout');
+        this.resetCapture();
       }
     }
 
     this.animationFrameId = requestAnimationFrame(this.loop);
   };
-
-  private resolveBit(): '0' | '1' | null {
-    if (this.bitSamples.length === 0) return null;
-    const zeros = this.bitSamples.filter((b) => b === '0').length;
-    const ones = this.bitSamples.length - zeros;
-    return zeros >= ones ? '0' : '1';
-  }
-
-  private findDominantFrequency(dataArray: Uint8Array): number {
-    if (!this.audioContext) return 0;
-
-    const nyquist = this.audioContext.sampleRate / 2;
-    const binSize = nyquist / dataArray.length;
-    const startIndex = Math.floor(800 / binSize);
-
-    let maxValue = 0;
-    let maxIndex = -1;
-
-    for (let i = startIndex; i < dataArray.length; i++) {
-      if (dataArray[i] > maxValue) {
-        maxValue = dataArray[i];
-        maxIndex = i;
-      }
-    }
-
-    if (maxValue < 10) return 0;
-    return maxIndex * binSize;
-  }
 }

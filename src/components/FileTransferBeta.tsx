@@ -12,18 +12,20 @@ import { sleep, waitForAck } from '../utils/transmitUtils';
 
 type Props = {
   transmitter: Transmitter;
-  receiver: Receiver | null;
+  getReceiver: () => Receiver | null;
   isListening: boolean;
   onLog: (msg: string) => void;
   onRequestMic: () => Promise<boolean>;
+  onStatus?: (status: { label: string; detail?: string; tone: 'active' | 'success' | 'warn' | 'error' | 'idle' }) => void;
 };
 
 export function FileTransferBeta({
   transmitter,
-  receiver,
+  getReceiver,
   isListening,
   onLog,
   onRequestMic,
+  onStatus,
 }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
@@ -32,13 +34,24 @@ export function FileTransferBeta({
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (f) {
-      if (f.size > 5 * 1024) {
-        onLog('⚠️ Max 5 KB for beta');
-        return;
-      }
-      setFile(f);
+    if (!f) return;
+    if (f.size > 5 * 1024) {
+      onLog(`⚠️ Max 5 KB for beta (selected ${(f.size / 1024).toFixed(1)} KB)`);
+      onStatus?.({
+        label: 'File too large',
+        detail: 'Beta limit is 5 KB',
+        tone: 'warn',
+      });
+      e.target.value = '';
+      return;
     }
+    setFile(f);
+    onLog(`📎 Selected ${f.name} (${f.size} bytes)`);
+    onStatus?.({
+      label: 'File ready',
+      detail: `${f.name} · ${f.size} bytes`,
+      tone: 'idle',
+    });
   };
 
   const transmitMessage = async (msg: string) => {
@@ -59,14 +72,25 @@ export function FileTransferBeta({
 
     setSending(true);
     setSendProgress(0);
+    onStatus?.({
+      label: 'Sending file…',
+      detail: file.name,
+      tone: 'active',
+    });
 
     try {
       const chunks = await encodeFileForChunks(file);
       onLog(`Sending ${file.name} (${chunks.length} frames, id ${chunks[0].fileId})`);
+      const receiver = getReceiver();
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         const msg = chunkToMessage(chunk);
+        if (msg.length > 128) {
+          onLog(`⚠️ Chunk ${i} too long (${msg.length} chars) — try a smaller file`);
+          onStatus?.({ label: 'Chunk too long', detail: msg.slice(0, 40), tone: 'error' });
+          return;
+        }
         let acked = false;
 
         for (let attempt = 1; attempt <= SonicConfig.MAX_CHUNK_RETRIES; attempt++) {
@@ -94,8 +118,10 @@ export function FileTransferBeta({
       }
 
       onLog(`✅ Sent ${file.name}`);
+      onStatus?.({ label: 'File sent', detail: file.name, tone: 'success' });
     } catch (err) {
       onLog(`Error: ${err}`);
+      onStatus?.({ label: 'File send failed', detail: String(err), tone: 'error' });
     } finally {
       setSending(false);
     }
@@ -111,7 +137,13 @@ export function FileTransferBeta({
         Meta frame + data chunks with acoustic ACK. Enable mic on both devices.
       </p>
       <div className="flex flex-wrap items-end gap-2">
-        <input ref={fileInputRef} type="file" onChange={handleFileSelect} className="hidden" />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="*/*"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
