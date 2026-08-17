@@ -6,7 +6,7 @@ interface Props {
   currentFreq: number;
 }
 
-const TOLERANCE = 400; // Hz - same as Receiver
+const TOLERANCE = SonicConfig.FREQ_TOLERANCE;
 
 export const FrequencyVisualizer: React.FC<Props> = ({ currentFreq }) => {
   const isZero = Math.abs(currentFreq - SonicConfig.FREQ_ZERO) < TOLERANCE;

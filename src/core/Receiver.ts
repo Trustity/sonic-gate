@@ -1,5 +1,4 @@
-// src/core/Receiver.ts
-import { SonicConfig } from './SonicConfig';
+import { SonicConfig } from '../core/SonicConfig';
 import { Decoder } from '../protocol/Decoder';
 
 export type ReceiverStatus = 'listening' | 'stopped' | 'denied';
@@ -9,76 +8,75 @@ export class Receiver {
   private analyser: AnalyserNode | null = null;
   private mediaStream: MediaStream | null = null;
   private animationFrameId: number | null = null;
-  
-  // המוח שמפענח את הביטים
+
   private decoder = new Decoder();
-  
-  // משתנים לניהול הזמן (סנכרון שעון)
+
   private isReceiving = false;
   private nextSampleTime = 0;
   private silenceCounter = 0;
-  // Majority voting: אוספים דגימות לכל ביט
   private bitSamples: ('0' | '1')[] = [];
 
-  // Callbacks לעדכון ה-UI
   public onStatusChange: (status: ReceiverStatus) => void = () => {};
   public onFrequencyDetected: (freq: number) => void = () => {};
+  public onMicLevel: (level: number) => void = () => {};
   public onMessageDecoded: (msg: string) => void = () => {};
+  public onAckReceived: (chunkIndex: number) => void = () => {};
   public onProgress: (percent: number) => void = () => {};
   public onLog: (log: string) => void = () => {};
 
   constructor() {
-    // 1. חיבור הודעות הצלחה
     this.decoder.onMessageDecoded = (msg) => {
-      this.onLog(`✅ DECODED: ${msg}`);
+      this.onLog(`✅ DECODED: ${msg.slice(0, 40)}${msg.length > 40 ? '…' : ''}`);
       this.onMessageDecoded(msg);
-      this.isReceiving = false; // סיימנו הודעה, חוזרים להמתין
+      this.isReceiving = false;
     };
-    
-    // 2. חיבור לוגים מהדיקודר (כדי לראות SYNC ו-LENGTH)
+    this.decoder.onAckReceived = (idx) => {
+      this.onAckReceived(idx);
+      this.isReceiving = false;
+    };
     this.decoder.onLog = (msg) => this.onLog(msg);
-
     this.decoder.onProgress = (percent) => this.onProgress(percent);
+  }
+
+  getDecoder(): Decoder {
+    return this.decoder;
   }
 
   async start(): Promise<boolean> {
     try {
-      this.onLog('Starting microphone...');
-      
-      // בדיקה שהדפדפן תומך
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Browser does not support audio API");
+      this.onLog('Starting microphone…');
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Browser does not support audio API');
       }
 
-      // יצירת הקונטקסט
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      
-      // בקשת הרשאה עם ביטול סינוני רעשים (קריטי!)
+      this.audioContext = new (window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
-        }
+        },
       });
-      
+
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 4096;
       this.analyser.smoothingTimeConstant = 0.5;
-      
+
       source.connect(this.analyser);
-      
+
       this.onStatusChange('listening');
-      this.onLog('Mic active. Waiting for signal...');
+      this.onLog('Mic active. Waiting for signal…');
       this.loop();
-      
-      return true; // הצלחה
-      
+
+      return true;
     } catch (err) {
       this.onLog(`Error: ${err}`);
       this.onStatusChange('denied');
-      return false; // כישלון
+      return false;
     }
   }
 
@@ -91,13 +89,14 @@ export class Receiver {
 
   stop() {
     if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
-    this.mediaStream?.getTracks().forEach(track => track.stop());
-    
+    this.mediaStream?.getTracks().forEach((track) => track.stop());
+
     if (this.audioContext && this.audioContext.state !== 'closed') {
-      this.audioContext.close();
+      void this.audioContext.close();
     }
-    
+
     this.onStatusChange('stopped');
+    this.onMicLevel(0);
   }
 
   private loop = () => {
@@ -107,23 +106,31 @@ export class Receiver {
     const dataArray = new Uint8Array(bufferLength);
     this.analyser.getByteFrequencyData(dataArray);
 
-    // 1. זיהוי התדר
+    let peak = 0;
+    const startIndex = Math.floor(800 / ((this.audioContext.sampleRate / 2) / dataArray.length));
+    for (let i = startIndex; i < dataArray.length; i++) {
+      if (dataArray[i] > peak) peak = dataArray[i];
+    }
+    this.onMicLevel(Math.min(1, peak / 96));
+
     const freq = this.findDominantFrequency(dataArray);
     this.onFrequencyDetected(freq);
 
-    // 2. המרה לביט (עם טווח סובלנות של 300Hz)
     let currentBit: '0' | '1' | null = null;
-if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 400) currentBit = '0';
-    else if (Math.abs(freq - SonicConfig.FREQ_ONE) < 400) currentBit = '1';
+    if (Math.abs(freq - SonicConfig.FREQ_ZERO) < SonicConfig.FREQ_TOLERANCE) {
+      currentBit = '0';
+    } else if (Math.abs(freq - SonicConfig.FREQ_ONE) < SonicConfig.FREQ_TOLERANCE) {
+      currentBit = '1';
+    }
+
     const now = this.audioContext.currentTime;
 
-    // 3. מכונת המצבים
     if (!this.isReceiving) {
       if (currentBit !== null) {
         this.isReceiving = true;
         this.bitSamples = [];
-        this.onLog(`📶 Signal Detected! (${Math.round(freq)}Hz)`);
-        this.nextSampleTime = now + SonicConfig.BIT_DURATION * 0.6; // דילוג על תחילת הביט הראשון
+        this.onLog(`📶 Signal detected (${Math.round(freq)} Hz)`);
+        this.nextSampleTime = now + SonicConfig.BIT_DURATION * 0.6;
         this.silenceCounter = 0;
       }
     } else {
@@ -133,7 +140,7 @@ if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 400) currentBit = '0';
       } else {
         this.silenceCounter++;
         if (this.silenceCounter > 90) {
-          this.onLog('❌ Signal Lost');
+          this.onLog('❌ Signal lost');
           this.isReceiving = false;
           this.bitSamples = [];
         }
@@ -160,19 +167,14 @@ if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 400) currentBit = '0';
 
   private findDominantFrequency(dataArray: Uint8Array): number {
     if (!this.audioContext) return 0;
-    
+
     const nyquist = this.audioContext.sampleRate / 2;
-    // חישוב כמה הרץ מייצג כל "תא" במערך
     const binSize = nyquist / dataArray.length;
-    
-    // --- התיקון: מתחילים לחפש רק מ-1000Hz ומעלה ---
-    // זה יסנן את ה-47Hz ואת כל הרעשים של המזגן/חשמל
-    const startIndex = Math.floor(800 / binSize); 
+    const startIndex = Math.floor(800 / binSize);
 
     let maxValue = 0;
     let maxIndex = -1;
 
-    // הלולאה מתחילה מ-startIndex ולא מ-0
     for (let i = startIndex; i < dataArray.length; i++) {
       if (dataArray[i] > maxValue) {
         maxValue = dataArray[i];
@@ -180,9 +182,7 @@ if (Math.abs(freq - SonicConfig.FREQ_ZERO) < 400) currentBit = '0';
       }
     }
 
-    // סף רעש מינימלי (נשאר רגיש)
     if (maxValue < 10) return 0;
-
     return maxIndex * binSize;
   }
 }

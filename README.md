@@ -42,7 +42,7 @@ No environment variables required. Mic access needs a secure context (HTTPS in p
 
 Version history lives in **[CHANGELOG.md](./CHANGELOG.md)** (git tags, not on the Labs site).
 
-Current: **v0.1.0** — baseline POC (text + beta file transfer).
+Current: **v0.3.0** — protocol v2, speed presets, file ACK/retry, loopback test.
 
 ---
 
@@ -63,13 +63,19 @@ Current: **v0.1.0** — baseline POC (text + beta file transfer).
 
 ## Protocol (high level)
 
+### v2 (default transmit)
+
 | Segment | Bits | Role |
 |---------|------|------|
-| Sync | 16 | `1010101010101010` |
+| Sync ×2 | 32 | `1010101010101010` repeated |
+| Marker | 16 | `1100110011001100` |
+| Version | 8 | `2` |
 | Length | 8 | Payload length (1–128 bytes) |
 | Data | N×8 | ASCII text |
-| Checksum | 8 | XOR of all characters |
+| CRC-16 | 16 | CCITT-FALSE over payload |
 | Tail | 12 | End marker |
+
+Receivers still decode **v1** frames (single sync, XOR checksum) for compatibility.
 
 **FSK tones**
 
@@ -78,7 +84,17 @@ Current: **v0.1.0** — baseline POC (text + beta file transfer).
 | `0` | 1500 Hz |
 | `1` | 3500 Hz |
 
-Baud rate in code: **3 bit/s** (slow on purpose for robustness in noisy rooms).
+**Speed presets**
+
+| Preset | Baud | ~time per bit |
+|--------|------|----------------|
+| Slow | 3 | 333 ms |
+| Normal | 6 | 167 ms |
+| Fast | 10 | 100 ms |
+
+**File transfer (β)** — meta frame (`M:id:tot:name`) + data frames (`F:id:idx:tot:base64`). Receiver sends acoustic ACK after each data chunk; sender retries on timeout.
+
+See [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 ---
 

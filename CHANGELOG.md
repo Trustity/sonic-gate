@@ -12,15 +12,33 @@ Versioning follows [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATC
 Release by updating this file, bumping `package.json`, committing, and tagging:
 
 ```bash
-git tag -a v0.1.0 -m "Sonic-Gate v0.1.0"
+git tag -a v0.3.0 -m "Sonic-Gate v0.3.0"
 git push origin main --tags
 ```
 
 ## [Unreleased]
 
-### Planned
-- Triage reliability improvements (sync, chunk timing, file-transfer IDs).
-- Optional speed presets and clearer in-app guidance for noisy rooms.
+## [0.3.0] - 2026-08-17
+
+Major reliability and UX release — protocol v2, file transfer ACK/retry, speed presets.
+
+### Added
+- **Protocol v2**: double sync preamble, 16-bit marker, version byte, CRC-16/CCITT payload check.
+- **Backward-compatible decode** for v1 frames (XOR checksum) on the receiver.
+- **Speed presets**: Slow (3 bit/s), Normal (6 bit/s), Fast (10 bit/s).
+- **Acoustic ACK** frames after file data chunks; sender waits and retries up to 3 times.
+- **File protocol v2**: random 4-hex file ID, meta frame with original filename, chunked base64.
+- **Loopback tab** — software encode→decode test without a second device.
+- **Mic level meter**, **TX indicator**, and in-app **tips** panel.
+- Inter-chunk pause tuning and send/receive progress for files.
+
+### Changed
+- Default wire format is v2 (transmit); v1 still decodes on listen.
+- File transfer requires mic on sender (to hear ACKs) and receiver (to send ACKs).
+
+### Fixed
+- File sessions no longer collide when two transfers share the same chunk count.
+- Transmitter returns a promise that resolves when audio finishes.
 
 ## [0.1.0] - 2026-08-17
 
@@ -36,10 +54,6 @@ First versioned Labs release. Documents the POC as shipped on
 - Local message history with export/clear (browser `localStorage` only).
 - Beta file transfer mode (≤5 KB, chunked base64 over the text protocol).
 - Trustity Labs chrome and links to [trustitylabs.com](https://trustitylabs.com).
-
-### Changed
-- Live demo URL moved to `sonic-gate.trustitylabs.com`.
-- Labs-aligned branding and README.
 
 ### Notes
 - Experimental POC only — not a production or security channel.
