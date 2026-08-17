@@ -18,6 +18,12 @@ git push origin main --tags
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-08-17
+
+### Fixed
+- **iPhone / acoustic bit slip** — record raw bits on a 16 ms timer (not rAF), then **align to sync and decode once** when transmission ends (fixes "Unknown version 224" + premature signal lost).
+- Transmitter sends a **16-bit wake tone** before sync so the receiver clock locks earlier.
+
 ## [0.3.2] - 2026-08-17
 
 ### Fixed

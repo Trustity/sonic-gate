@@ -14,8 +14,11 @@ export class Encoder {
     const dataBinary = BinaryUtils.stringToBinary(cleaned);
     const checksumBinary = crc16ToBinary(cleaned);
 
-    const sync = SonicConfig.SYNC_TOKEN.repeat(SonicConfig.SYNC_REPEAT);
+    const sync = SonicConfig.SYNC_TOKEN;
+    /** Stable 0-tone so the receiver clock locks before sync (mobile mic lag). */
+    const wake = '0000000000000000';
     return (
+      wake +
       sync +
       SonicConfig.SYNC_MARKER_V2 +
       versionBinary +

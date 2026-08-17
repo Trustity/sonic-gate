@@ -39,7 +39,7 @@ export function LabsChrome() {
           <p className="mt-2 max-w-sm text-[12px] leading-relaxed text-lab-muted">
             Acoustic data transmission POC — send text through sound waves only.
           </p>
-          <p className="mt-1 font-mono text-[10px] text-lab-dim">v0.3.2 · protocol v2</p>
+          <p className="mt-1 font-mono text-[10px] text-lab-dim">v0.3.3 · protocol v2</p>
         </div>
       </div>
     </div>

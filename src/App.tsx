@@ -104,21 +104,21 @@ function App() {
       case 'finalizing':
         setLiveStatus({
           label: 'Finishing decode',
-          detail: 'Transmission ended — processing received bits',
+          detail: 'Transmission ended — aligning bits and decoding',
           tone: 'active',
         });
         break;
       case 'signal_lost':
         setLiveStatus({
-          label: 'Signal lost',
-          detail: 'No tones detected — ready for the next send',
+          label: 'No signal',
+          detail: 'Ready for the next transmission',
           tone: 'warn',
         });
         break;
       case 'decode_timeout':
         setLiveStatus({
-          label: 'Decode timed out',
-          detail: 'Try Slow speed, quieter room, or hold devices closer',
+          label: 'Could not decode',
+          detail: 'Same Slow speed on both devices; hold them closer',
           tone: 'error',
         });
         break;

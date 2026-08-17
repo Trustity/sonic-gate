@@ -101,8 +101,8 @@ export class Decoder {
     if (this.buffer.length < 8) return;
     const version = parseInt(this.buffer.slice(0, 8), 2);
     this.buffer = this.buffer.slice(8);
-    if (version !== SonicConfig.PROTOCOL_VERSION) {
-      this.onLog(`⚠️ Unknown version ${version}, resetting.`);
+      if (version !== SonicConfig.PROTOCOL_VERSION) {
+      this.onLog(`⚠️ Unknown version ${version} (misaligned frame)`);
       this.reset();
       return;
     }
