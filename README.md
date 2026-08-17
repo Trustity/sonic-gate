@@ -38,6 +38,14 @@ No environment variables required. Mic access needs a secure context (HTTPS in p
 
 ---
 
+## Releases
+
+Version history lives in **[CHANGELOG.md](./CHANGELOG.md)** (git tags, not on the Labs site).
+
+Current: **v0.1.0** — baseline POC (text + beta file transfer).
+
+---
+
 ## How to use
 
 1. Open the app on **two devices** (or two browser tabs)
